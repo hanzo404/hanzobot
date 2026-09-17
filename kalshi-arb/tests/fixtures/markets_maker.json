@@ -1,0 +1,25 @@
+{
+  "cursor": "",
+  "markets": [
+    {
+      "ticker": "KXMAKERDEMO-26SEP19",
+      "event_ticker": "KXMAKERDEMO-26SEP19E",
+      "status": "active",
+      "market_type": "binary",
+      "result": "",
+      "close_time": "2026-09-19T14:00:00Z",
+      "mve_collection_ticker": "",
+      "title": "Maker demo market: asks expensive (1.11) but bids sum to 0.95",
+      "yes_bid_dollars": "0.5000",
+      "yes_ask_dollars": "0.5600",
+      "yes_ask_size_fp": "80.00",
+      "yes_bid_size_fp": "100.00",
+      "no_bid_dollars": "0.4500",
+      "no_ask_dollars": "0.5500",
+      "no_ask_size_fp": "90.00",
+      "no_bid_size_fp": "100.00",
+      "liquidity_dollars": "10000.00",
+      "volume_24h_fp": "5000.00"
+    }
+  ]
+}

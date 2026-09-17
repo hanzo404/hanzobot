@@ -48,6 +48,23 @@ class Notifier:
         self._send_telegram(text)
         return True
 
+    def cross_opportunity(self, o) -> bool:
+        """Deduped alert for a cross-venue opportunity (XV_A / XV_B)."""
+        key = ("XV", o.kalshi.ticker, o.kind, round(o.k_price, 4), round(o.p_price, 4))
+        if key in self._seen:
+            return False
+        self._seen.add(key)
+        text = (
+            f"🎯 {o.kind} {o.pair.label}\n"
+            f"Kalshi {o.kalshi.ticker}@{o.k_price:.3f} + "
+            f"Polymarket {o.pair.pm_condition_id[:10]}…@{o.p_price:.3f}\n"
+            f"gross {o.gross_edge * 100:.2f}c | fees {o.fees * 100:.2f}c "
+            f"| NET {o.net_edge * 100:.2f}c | max {int(o.max_pairs)} pairs"
+        )
+        log.info("CROSS-SIGNAL %s", text.replace("\n", " | "))
+        self._send_telegram(text)
+        return True
+
     def trade(self, pos, stake: float) -> None:
         text = (
             f"📝 PAPER FILL {pos.kind} x{pos.pairs:g} @ {pos.market_ticker} — "

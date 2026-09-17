@@ -52,9 +52,11 @@ class Market:
     yes_bid: float = 0.0
     yes_ask: float = 0.0
     yes_ask_size: float = 0.0
+    yes_bid_size: float = 0.0
     no_bid: float = 0.0
     no_ask: float = 0.0
     no_ask_size: float = 0.0
+    no_bid_size: float = 0.0
     liquidity_usd: float = 0.0
     volume_24h_usd: float = 0.0
 
@@ -85,9 +87,11 @@ class Market:
             yes_bid=_f(d.get("yes_bid_dollars")),
             yes_ask=_f(d.get("yes_ask_dollars")),
             yes_ask_size=_f(d.get("yes_ask_size_fp")),
+            yes_bid_size=_f(d.get("yes_bid_size_fp")),
             no_bid=_f(d.get("no_bid_dollars")),
             no_ask=_f(d.get("no_ask_dollars")),
             no_ask_size=_f(d.get("no_ask_size_fp")),
+            no_bid_size=_f(d.get("no_bid_size_fp")),
             liquidity_usd=_f(d.get("liquidity_dollars")),
             volume_24h_usd=_f(d.get("volume_24h_fp")),
         )

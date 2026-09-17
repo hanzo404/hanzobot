@@ -24,7 +24,7 @@ class Position:
     market_ticker: str
     event_ticker: str
     title: str
-    kind: str
+    kind: str                  # COMBO_BUY | MAKER_COMBO | XV_A | XV_B
     pairs: float
     cost_usd: float            # total cost of both legs + fees
     edge_usd: float            # locked-in edge = 1.00*pairs - cost_usd
@@ -33,6 +33,7 @@ class Position:
     settled_at: str | None = None
     result: str = ""           # yes/no at settlement
     realized_usd: float = 0.0
+    meta: dict = field(default_factory=dict)   # e.g. pm_condition_id for cross
 
 
 @dataclass
@@ -46,6 +47,7 @@ class PaperPortfolio:
     halted: bool = False
     trades: int = 0
     halted_reason: str = ""
+    extra: dict = field(default_factory=dict)   # strategy state (e.g. maker warm counters)
 
     # -------------------------------------------------------------- helpers
 
@@ -65,7 +67,21 @@ class PaperPortfolio:
     # ------------------------------------------------------------ operations
 
     def open_combo_buy(self, opp: Opportunity, stake_usd: float) -> Position | None:
-        cost_per_pair = opp.cost_per_pair
+        return self.open_position(
+            kind=opp.kind,
+            market_ticker=opp.market.ticker,
+            event_ticker=opp.market.event_ticker,
+            title=opp.market.title,
+            cost_per_pair=opp.cost_per_pair,
+            stake_usd=stake_usd,
+        )
+
+    def open_position(self, kind: str, market_ticker: str, event_ticker: str,
+                      title: str, cost_per_pair: float, stake_usd: float,
+                      meta: dict | None = None) -> Position | None:
+        """Open a guaranteed-$1-per-pair position (combo or cross-venue)."""
+        if cost_per_pair <= 0 or cost_per_pair >= 1.0:
+            return None
         pairs = int(stake_usd // cost_per_pair)
         if pairs < 1:
             return None
@@ -77,15 +93,16 @@ class PaperPortfolio:
             cost = round(pairs * cost_per_pair, 4)
         edge = round(pairs * 1.00 - cost, 4)
         pos = Position(
-            id=f"{opp.market.ticker}@{datetime.now(timezone.utc).timestamp()}",
-            market_ticker=opp.market.ticker,
-            event_ticker=opp.market.event_ticker,
-            title=opp.market.title,
-            kind=COMBO_BUY,
+            id=f"{market_ticker}@{datetime.now(timezone.utc).timestamp()}",
+            market_ticker=market_ticker,
+            event_ticker=event_ticker,
+            title=title[:160],
+            kind=kind,
             pairs=float(pairs),
             cost_usd=cost,
             edge_usd=edge,
             opened_at=datetime.now(timezone.utc).isoformat(),
+            meta=meta or {},
         )
         self.cash_usd = round(self.cash_usd - cost, 4)
         self.positions.append(pos)
@@ -144,6 +161,7 @@ class PaperPortfolio:
             "halted": self.halted,
             "halted_reason": self.halted_reason,
             "trades": self.trades,
+            "extra": self.extra,
         }
         Path(path).write_text(json.dumps(data, indent=2) + "\n")
 
@@ -162,6 +180,7 @@ class PaperPortfolio:
             halted=d.get("halted", False),
             halted_reason=d.get("halted_reason", ""),
             trades=d.get("trades", 0),
+            extra=d.get("extra", {}),
         )
         pf.positions = [Position(**x) for x in d.get("positions", [])]
         return pf

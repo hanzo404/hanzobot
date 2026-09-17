@@ -1,14 +1,15 @@
 """Opportunity detection.
 
-Two structural shapes on a single binary market:
+Structural shapes on a single binary market:
 
-  COMBO_BUY  : yes_ask + no_ask < 1.00  -> buy YES at ask and NO at ask.
-               At settlement exactly one leg pays $1.00, so the pair
-               locks in $1.00 - (yes_ask + no_ask) - fees.
-  COMBO_SELL : yes_bid + no_bid > 1.00  -> the mirror image (sell both
-               sides). Kept as a *signal only*: shorting prediction
-               markets needs a live account and margin, and paper mode
-               does not model that.
+  COMBO_BUY   : yes_ask + no_ask < 1.00  -> buy YES at ask and NO at ask
+               (taker, crosses the spread). At settlement exactly one leg
+               pays $1.00, so the pair locks in $1 - (asks) - taker fees.
+  MAKER_COMBO : yes_bid + no_bid < 1.00  -> post RESTING bids at the bid
+               side (maker fee = taker/4). Edge is thinner but fees are
+               4x cheaper. Paper mode assumes the bids fill once the
+               condition holds for N consecutive scans (documented proxy).
+  COMBO_SELL  : yes_bid + no_bid > 1.00  -> mirror image (signal only).
 """
 from __future__ import annotations
 
@@ -20,6 +21,7 @@ from .models import Market, kalshi_fee
 
 COMBO_BUY = "COMBO_BUY"
 COMBO_SELL = "COMBO_SELL"
+MAKER_COMBO = "MAKER_COMBO"
 
 
 @dataclass
@@ -62,23 +64,37 @@ def filter_markets(markets: list[Market], cfg: Config, now: datetime | None = No
 def evaluate_market(m: Market, cfg: Config) -> Opportunity | None:
     """Return the best opportunity on this market, or None.
 
-    Fee side is configurable: taker (immediate fill, default) or maker
-    (resting order; Kalshi maker fee = taker/4 per the official schedule).
+    Fee model is fixed per shape: COMBO_BUY pays taker fees (crosses the ask,
+    immediate lock-in); MAKER_COMBO pays maker fees (taker/4, resting bids).
+    When both fire, the higher net edge wins.
     """
     if not m.has_tradable_quotes:
         return None
 
-    rate = cfg.maker_fee_rate if cfg.fee_side == "maker" else cfg.fee_rate
     best: Opportunity | None = None
 
-    # --- COMBO_BUY (the executable one in paper mode) ---
+    # --- COMBO_BUY (taker: cross the ask, immediate lock-in) ---
     gross = 1.00 - (m.yes_ask + m.no_ask)
-    fees = kalshi_fee(m.yes_ask, 1, rate) + kalshi_fee(m.no_ask, 1, rate)
+    fees = (kalshi_fee(m.yes_ask, 1, cfg.fee_rate)
+            + kalshi_fee(m.no_ask, 1, cfg.fee_rate))
     max_pairs = min(m.yes_ask_size, m.no_ask_size)
     if max_pairs >= 1 and (m.yes_ask_size >= cfg.min_quote_size or m.no_ask_size >= cfg.min_quote_size):
         net = gross - fees
         if net >= cfg.min_net_edge:
             best = Opportunity(COMBO_BUY, m, m.yes_ask, m.no_ask, gross, fees, net, max_pairs)
+
+    # --- MAKER_COMBO (resting bids at the bid, maker fees) ---
+    if m.yes_bid_size >= 1 and m.no_bid_size >= 1:
+        gross_m = 1.00 - (m.yes_bid + m.no_bid)
+        fees_m = (kalshi_fee(m.yes_bid, 1, cfg.maker_fee_rate)
+                  + kalshi_fee(m.no_bid, 1, cfg.maker_fee_rate))
+        net_m = gross_m - fees_m
+        if net_m >= cfg.maker_min_net_edge:
+            opp = Opportunity(MAKER_COMBO, m, m.yes_bid, m.no_bid,
+                              gross_m, fees_m, net_m,
+                              min(m.yes_bid_size, m.no_bid_size))
+            if best is None or opp.net_edge > best.net_edge:
+                best = opp
 
     # --- COMBO_SELL (signal only) ---
     gross_s = (m.yes_bid + m.no_bid) - 1.00

@@ -1,0 +1,28 @@
+[
+  {
+    "conditionId": "0xpm_fixture_eth_4000",
+    "question": "Will ETH close above 4000 on Sept 18?",
+    "active": true,
+    "closed": false,
+    "enableOrderBook": true,
+    "bestBid": "0.44",
+    "bestAsk": "0.47",
+    "volume24hr": "10000",
+    "liquidityNum": "20000",
+    "endDate": "2026-09-18T14:00:00Z",
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.455\", \"0.545\"]"
+  },
+  {
+    "conditionId": "0xpm_fixture_noise_1",
+    "question": "Completely unrelated event with no overlap to any kalshi market",
+    "active": true,
+    "closed": false,
+    "enableOrderBook": true,
+    "bestBid": "0.5",
+    "bestAsk": "0.52",
+    "volume24hr": "500",
+    "liquidityNum": "3000",
+    "endDate": "2026-10-01T00:00:00Z"
+  }
+]

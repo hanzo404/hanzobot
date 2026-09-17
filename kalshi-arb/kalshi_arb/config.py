@@ -26,16 +26,28 @@ class Config:
     min_quote_size: float = 10.0       # contracts visible at the ask
 
     # --- Opportunity / sizing ---
-    min_net_edge: float = 0.005        # min net edge per pair (USD), after fees
+    min_net_edge: float = 0.005        # min net edge per pair, COMBO_BUY (taker)
+    maker_min_net_edge: float = 0.002  # min net edge per pair, MAKER_COMBO (maker fees = 1/4)
+    maker_fill_scans: int = 3          # consecutive scans the maker condition must hold
+                                       # before paper mode assumes the resting bids fill
     fee_rate: float = 0.07             # Kalshi TAKER fee coefficient (official, eff. 2026-07-07)
     maker_fee_rate: float = 0.0175     # Kalshi MAKER fee coefficient (official, = taker/4)
-    fee_side: str = "taker"            # "taker" (default, immediate fill) or "maker" (resting order)
     max_stake_usd: float = 25.0        # max stake per opportunity
     stake_pct_of_bankroll: float = 0.05
 
     # --- Risk ---
     max_open_positions: int = 5
     daily_max_loss_usd: float = 50.0   # realized daily loss that triggers the kill switch
+
+    # --- Cross-venue (Kalshi <-> Polymarket) ---
+    pm_api_base: str = "https://gamma-api.polymarket.com"
+    pm_limit: int = 500
+    pm_min_liquidity_usd: float = 5000.0
+    pm_min_volume_24h_usd: float = 1000.0
+    pm_fee_rate_default: float = 0.05  # conservative avg; override per pair in venue map
+    xv_min_net_edge: float = 0.01      # cross-venue needs a fatter edge (two venues, two fills)
+    max_cross_positions: int = 3
+    venue_map_file: str = "config/venue_map.json"
 
     # --- Paper portfolio ---
     bankroll_usd: float = 1000.0
