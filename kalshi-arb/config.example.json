@@ -1,0 +1,20 @@
+{
+  "api_base": "https://api.elections.kalshi.com/trade-api/v2",
+  "request_timeout_sec": 20.0,
+  "scan_limit": 200,
+  "scan_pages": 5,
+  "min_liquidity_usd": 2000.0,
+  "min_volume_24h_usd": 500.0,
+  "min_hours_to_expiry": 1.0,
+  "min_quote_size": 10.0,
+  "min_net_edge": 0.005,
+  "fee_rate": 0.07,
+  "max_stake_usd": 25.0,
+  "stake_pct_of_bankroll": 0.05,
+  "max_open_positions": 5,
+  "daily_max_loss_usd": 50.0,
+  "bankroll_usd": 1000.0,
+  "state_file": "state/paper_state.json",
+  "telegram_token": "",
+  "telegram_chat_id": ""
+}

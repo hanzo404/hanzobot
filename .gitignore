@@ -1,0 +1,10 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Bot state & secrets
+kalshi-arb/state/
+kalshi-arb/config.json
+*.env
