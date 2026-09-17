@@ -6,10 +6,12 @@
 
 ```
 docs/
-├── arbitrage-strategies-50.md        # تحقیق ۱: ۵۰ استراتژی/سبک آربیتراژ + ۶۰ منبع
-└── bots-landscape-and-github-learning.md  # تحقیق ۲: چشم‌انداز ربات‌های سودده + منابع آموزشی GitHub
+├── arbitrage-strategies-50.md                 # تحقیق ۱: ۵۰ استراتژی/سبک آربیتراژ + ۶۰ منبع
+├── bots-landscape-and-github-learning.md      # تحقیق ۲: چشم‌انداز ربات‌های سودده + منابع آموزشی GitHub
+└── prediction-markets-deep-dive.md            # تحقیق ۳: مستندات رسمی Kalshi/Polymarket + کارمزد رسمی
 kalshi-arb/
-└── (MVP) ربات آربیتراژ بازار پیش‌بینی Kalshi — paper trading، بدون وابستگی خارجی
+├── (MVP) ربات آربیتراژ بازار پیش‌بینی Kalshi — paper trading، بدون وابستگی خارجی
+└── data/snapshots/  ← داده‌ی جمع‌آوری‌شده (اولین snapshot واقعی از API زنده)
 ```
 
 ## انتخاب اولویت (سپتامبر ۲۲۶)

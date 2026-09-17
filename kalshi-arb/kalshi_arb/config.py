@@ -27,7 +27,9 @@ class Config:
 
     # --- Opportunity / sizing ---
     min_net_edge: float = 0.005        # min net edge per pair (USD), after fees
-    fee_rate: float = 0.07             # Kalshi taker fee coefficient: fee = rate*C*P*(1-P)
+    fee_rate: float = 0.07             # Kalshi TAKER fee coefficient (official, eff. 2026-07-07)
+    maker_fee_rate: float = 0.0175     # Kalshi MAKER fee coefficient (official, = taker/4)
+    fee_side: str = "taker"            # "taker" (default, immediate fill) or "maker" (resting order)
     max_stake_usd: float = 25.0        # max stake per opportunity
     stake_pct_of_bankroll: float = 0.05
 
@@ -38,6 +40,11 @@ class Config:
     # --- Paper portfolio ---
     bankroll_usd: float = 1000.0
     state_file: str = "state/paper_state.json"
+
+    # --- Data collection ---
+    collect: bool = False
+    snapshots_dir: str = "data/snapshots"
+    snapshot_keep: int = 2000          # prune older snapshots beyond this count
 
     # --- Notifications (optional) ---
     telegram_token: str = ""

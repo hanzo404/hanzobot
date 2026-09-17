@@ -16,13 +16,25 @@ $1.00 می‌دهد، **سود پس از اجرای هر دو پا قفل می�
 - اسکن صفحه‌به‌صفحه‌ی بازارهای open + فیلترها (liquidity، volume 24h، نوع binary،
   حذف multivariate/MVE، فاصله تا انقضا)
 - تشخیص دو شکل: `COMBO_BUY` (قابل اجرا در paper) و `COMBO_SELL` (فقط سیگنال)
-- مدل کارمزد Kalshi: `fee ≈ 0.07 × C × P × (1−P)` با round-up به سنت (ضریب پیکربندی‌پذیر —
-  قبل از live با مستندات جاری چک شود)
+- مدل کارمزد **طبق جدول رسمی Kalshi** (مؤثر ۲۰-۰۷-۲۰۲۶): taker `0.07×C×P×(1−P)`،
+  maker `0.0175×C×P×(1−P)` — با `fee_side` قابل‌انتخاب (`KA_FEE_SIDE=maker`)
+- **Data collection:** `--collect` هر اسکن را به‌عنوان snapshot در `data/snapshots/`
+  ذخیره می‌کند + `--analyze DIR` آمار واقعی آربیتراژ را می‌دهد (توزیع edge، تیکرها، سری زمانی)
 - Paper portfolio با ذخیره‌سازی JSON (bankroll، پوزیشن‌ها، تسویه خودکار در بسته‌شدن بازار)
 - مدیریت ریسک: سقف استیک هر فرصت، سقف پوزیشن‌های باز، **حداکثر یک پوزیشن در هر بازار**،
   و **kill switch** زیان روزانه (خاموشی تا روز بعد UTC)
 - اعلان: console همیشه + Telegram اختیاری (بدون کلید هم کار می‌کند)
 - بدون هیچ وابستگی خارجی — فقط stdlib پایتون (3.10+)
+
+## جمع‌آوری داده (برای بک‌تست بعدی)
+```bash
+# هر ۱۵ ثانیه یک snapshot از کل بازارهای open ذخیره می‌کند:
+python3 -m kalshi_arb.bot --loop --interval 15 --collect
+
+# گزارش: چقدر آربیتراژ واقعی در داده‌ی جمع‌شده هست؟
+python3 -m kalshi_arb.bot --analyze data/snapshots
+```
+هدف: اندازه‌گیری «تعداد و توزیع net edge واقعی در هر N دقیقه» — مبنای تصمیم go/no-go برای live.
 
 ## اجرا
 
@@ -61,10 +73,15 @@ python3 -m unittest discover -s tests -v   # 30 تست، آفلاین
 
 ## وضعیت و نقشۀ راه
 - ✅ MVP paper-trading (این ریلیز)
+- ✅ Data collection + analyzer + اولین snapshot واقعی (داده‌ی زنده‌ی API)
+- ✅ کالیبراسیون کارمزد با جدول رسمی Kalshi + مستندات رسمی Polymarket (`docs/prediction-markets-deep-dive.md`)
+- ⬜ **حالت maker** (post-only) — کارمزد Kalshi ÷۴ / Polymarket صفر + rebate
 - ⬜ اتصال cross-venue (Kalshi ↔ Polymarket) — با تطبیق دقیق تیکر و هزینه‌ی هر دو طرف
 - ⬜ WebSocket به‌جای polling برای کاهش پنجره‌ی کشف
-- ⬜ اجرای live فقط با کلید API و در اندازه‌ی کوچک، پس از ≥ ۲ هفته paper با نتایج مثبت
+- ⬜ آرب Σ چندنتیجه‌ای (مجموع yes_ask همه‌ی نتایج یک رویداد) — با neg-risk در Polymarket
+- ⬜ چک کردن کارمزد غیراستاندارد سری‌های خاص پیش از live
 - ⬜ بک‌تست روی داده‌ی تاریخی order book (با ذخیره‌سازی اسکن‌های زنده از همین MVP)
+- ⬜ اجرای live فقط با کلید API و در اندازه‌ی کوچک، پس از ≥ ۲ هفته paper با نتایج مثبت
 
 ## هشدارها (از تحقیق)
 - این یک ابزار **آموزشی/paper** است؛ هیچ سودی تضمین نشده.

@@ -60,15 +60,20 @@ def filter_markets(markets: list[Market], cfg: Config, now: datetime | None = No
 
 
 def evaluate_market(m: Market, cfg: Config) -> Opportunity | None:
-    """Return the best opportunity on this market, or None."""
+    """Return the best opportunity on this market, or None.
+
+    Fee side is configurable: taker (immediate fill, default) or maker
+    (resting order; Kalshi maker fee = taker/4 per the official schedule).
+    """
     if not m.has_tradable_quotes:
         return None
 
+    rate = cfg.maker_fee_rate if cfg.fee_side == "maker" else cfg.fee_rate
     best: Opportunity | None = None
 
     # --- COMBO_BUY (the executable one in paper mode) ---
     gross = 1.00 - (m.yes_ask + m.no_ask)
-    fees = kalshi_fee(m.yes_ask, 1, cfg.fee_rate) + kalshi_fee(m.no_ask, 1, cfg.fee_rate)
+    fees = kalshi_fee(m.yes_ask, 1, rate) + kalshi_fee(m.no_ask, 1, rate)
     max_pairs = min(m.yes_ask_size, m.no_ask_size)
     if max_pairs >= 1 and (m.yes_ask_size >= cfg.min_quote_size or m.no_ask_size >= cfg.min_quote_size):
         net = gross - fees

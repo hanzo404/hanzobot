@@ -51,9 +51,9 @@ class KalshiClient:
 
     # --------------------------------------------------------------- markets
 
-    def open_markets(self) -> list[Market]:
-        """Fetch all open markets, paginating up to cfg.scan_pages pages."""
-        out: list[Market] = []
+    def open_markets_raw(self) -> list[dict]:
+        """Fetch all open markets (raw API objects), paginating up to scan_pages."""
+        out: list[dict] = []
         cursor = ""
         for _ in range(max(1, self.cfg.scan_pages)):
             params: dict = {"status": "open", "limit": str(self.cfg.scan_limit)}
@@ -61,11 +61,14 @@ class KalshiClient:
                 params["cursor"] = cursor
             data = self._get("/markets", params)
             raw = data.get("markets") or []
-            out.extend(Market.from_api(d) for d in raw)
+            out.extend(raw)
             cursor = data.get("cursor") or ""
             if not cursor or len(raw) < self.cfg.scan_limit:
                 break
         return out
+
+    def open_markets(self) -> list[Market]:
+        return [Market.from_api(d) for d in self.open_markets_raw()]
 
     def market(self, ticker: str) -> Market | None:
         try:
@@ -86,6 +89,9 @@ class FixtureClient:
     def __init__(self, markets: list[dict]) -> None:
         self._by_ticker = {d.get("ticker"): d for d in markets}
         self._markets = markets
+
+    def open_markets_raw(self) -> list[dict]:
+        return list(self._markets)
 
     def open_markets(self) -> list[Market]:
         return [Market.from_api(d) for d in self._markets]

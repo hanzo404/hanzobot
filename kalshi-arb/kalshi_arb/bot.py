@@ -17,8 +17,11 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .analyzer import analyze, format_report
 from .client import FixtureClient, KalshiClient, KalshiError
+from .collector import prune, save_snapshot
 from .config import Config
+from .models import Market
 from .notifier import Notifier
 from .portfolio import PaperPortfolio
 from .risk import RiskManager, stake_for
@@ -60,8 +63,21 @@ def run_scan(client, pf: PaperPortfolio, cfg: Config, notifier: Notifier,
         pf.save(cfg.state_file)
         return {"halted": True, "reason": pf.halted_reason}
 
-    markets = client.open_markets()
+    raw = client.open_markets_raw()
+    markets = [Market.from_api(d) for d in raw]
     opps = scan(markets, cfg, now)
+
+    if cfg.collect:
+        opp_docs = [
+            {"ticker": o.market.ticker, "kind": o.kind,
+             "yes": o.yes_price, "no": o.no_price,
+             "gross_c": round(o.gross_edge * 100, 2), "fees_c": round(o.fees * 100, 2),
+             "net_c": round(o.net_edge * 100, 2)}
+            for o in opps
+        ]
+        source = "kalshi-v2" if isinstance(client, KalshiClient) else "fixture"
+        save_snapshot(cfg.snapshots_dir, raw, opp_docs, source=source)
+        prune(cfg.snapshots_dir, cfg.snapshot_keep)
     risk = RiskManager(cfg, pf)
     summary = {
         "scanned": len(markets),
@@ -149,6 +165,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--loop", action="store_true", help="run continuously")
     ap.add_argument("--interval", type=float, default=15.0, help="seconds between scans")
     ap.add_argument("--fixture", default=None, help="offline: JSON file with an API response")
+    ap.add_argument("--analyze", nargs="?", const="data/snapshots", default=None,
+                    metavar="DIR", help="analyze collected snapshots and exit")
+    ap.add_argument("--collect", action="store_true", help="save a snapshot on every scan")
     ap.add_argument("--report", action="store_true", help="print portfolio status and exit")
     ap.add_argument("--reset", action="store_true", help="reset the paper portfolio")
     ap.add_argument("-v", "--verbose", action="store_true")
@@ -156,6 +175,11 @@ def main(argv: list[str] | None = None) -> int:
     _setup_logging(args.verbose)
 
     cfg = Config.load(args.config)
+    if args.collect:
+        cfg.collect = True
+    if args.analyze is not None:
+        print(format_report(analyze(args.analyze, cfg)))
+        return 0
     if args.report or args.reset:
         pf = _load_or_init_portfolio(cfg)
         if args.reset:

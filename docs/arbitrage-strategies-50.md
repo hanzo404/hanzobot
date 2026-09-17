@@ -142,7 +142,7 @@
 - **سختی رباتی:** سخت.
 
 ### ۱۹) Bot لیکوئیدیشن DeFi (Liquidation Bot)
-- **مکانیزم:** رصد حلقه‌های وام Aave؛ وقتی Health Factor一户 < ۱ شود، با فلش‌لن بخشی از بدهی (تا ۵۰٪) را می‌پردازید و **وثیقه + بنوس لیکوئیدیشن** را دریافت می‌کنید. سود = بنوس − (فلش‌لن fee + gas).
+- **مکانیزم:** رصد حلقه‌های وام Aave؛ وقتی Health Factor < ۱ شود، با فلش‌لن بخشی از بدهی (تا ۵۰٪) را می‌پردازید و **وثیقه + بنوس لیکوئیدیشن** را دریافت می‌کنید. سود = بنوس − (فلش‌لن fee + gas).
 - **منابع:** [GitHub — Aave v3 liquidation bot](https://github.com/thomasxiaodongwu/aave-v3-liquidation-bot) — [GitHub — Aave-Liquiditor](https://github.com/0xnavarro/Aave-Liquiditor)
 - **نکات کلیدی:** معماری رایج: Price Monitor + Health Factor Scanner + Executor با فلش‌لن + محاسبه‌کنندۀ سود. بهینه‌سازی gas با باندل کردن چند لیکوئید در یک فلش‌لن.
 - **سختی رباتی:** سخت (رقابت با botهای حرفه‌ای؛ حاشیه سود کم و race به gas).
