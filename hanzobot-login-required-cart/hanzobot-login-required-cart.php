@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name:       Hanzobot: Login Required for Add to Cart
- * Description:       مهمان‌ها با کلیک روی «افزودن به سبد خرید» به صفحه ورود هدایت می‌شوند و پس از ورود، به همراه محصول به سبد خرید برمی‌گردند. سازگار با ودمارت، باکس‌های خرید سفارشی و ورود پیامکی (OTP).
- * Version:           1.2.0
+ * Description:       مهمان‌ها با کلیک روی «افزودن به سبد خرید» به صفحه ورود هدایت می‌شوند و پس از ورود، به همراه محصول به سبد خرید برمی‌گردند. سازگار با ودمارت، باکس‌های خرید سفارشی (REST اختصاصی) و ورود پیامکی (OTP).
+ * Version:           1.2.1
  * Author:            Hanzobot
  * License:           GPL-2.0-or-later
  * Requires at least: 5.8
@@ -80,6 +80,10 @@ final class Hanzobot_Login_Required_Cart {
 		// ۳) توقیف سراسری: هیچ افزودنی از هر مسیری برای مهمان انجام نشود، مگر از دروازه‌ی خودمان.
 		add_filter( 'woocommerce_add_to_cart_validation', array( __CLASS__, 'guest_add_veto' ), 1, 5 );
 
+		// ۳-ب) بلاک کردن مسیرهای REST اختصاصی سبد خرید برای مهمان‌ها
+		//      (مثل /wp-json/hamyar/v1/cart/add در باکس خرید سفارشی).
+		add_filter( 'rest_pre_dispatch', array( __CLASS__, 'block_guest_cart_rest' ), 10, 3 );
+
 		// ۴) مسیر کلاسیک (بدون JS): ریدایرکت به ورود بعد از افزودنِ مجاز.
 		add_action( 'woocommerce_add_to_cart', array( __CLASS__, 'remember_guest_add' ), 5, 1 );
 		add_filter( 'woocommerce_add_to_cart_redirect', array( __CLASS__, 'guest_login_redirect_url' ), 99, 2 );
@@ -125,7 +129,7 @@ final class Hanzobot_Login_Required_Cart {
 			return;
 		}
 
-		wp_register_script( 'hzlrc-guest', '', array(), '1.2.0', true );
+		wp_register_script( 'hzlrc-guest', '', array(), '1.2.1', true );
 		wp_enqueue_script( 'hzlrc-guest' );
 
 		wp_localize_script(
@@ -162,6 +166,8 @@ final class Hanzobot_Login_Required_Cart {
 	function formComplete(form) {
 		var s = form.querySelectorAll('select[name^="attribute_"]');
 		for (var i = 0; i < s.length; i++) { if (!s[i].value) return false; }
+		var v = form.querySelector('input[name="variation_id"]');
+		if (v && !v.value) return false; // گزینه‌ی متغیر هنوز انتخاب نشده.
 		return true;
 	}
 
@@ -184,11 +190,12 @@ final class Hanzobot_Login_Required_Cart {
 
 	function isAddBtn(el) {
 		var cls = (el.className || '').toString();
-		var txt = (el.textContent || el.value || '').replace(/\s+/g, ' ');
 		if (el.classList.contains('single_add_to_cart_button')) return true;
 		if (el.classList.contains('add_to_cart_button') && !el.classList.contains('product_type_variable')) return true;
 		if (/add[_-]to[_-]cart/i.test(cls) && !/view|watch|icon|link/i.test(cls)) return true;
-		if (/افزودن به سبد|اضافه به سبد|افزودن به سبد خرید/.test(txt)) return true;
+		// دکمه‌های سفارشی (مثل باکس خرید اختصاصی): برچسب کوتاه.
+		var t = (el.textContent || '').replace(/\s+/g, ' ').trim();
+		if (t.length <= 45 && /افزودن به سبد|اضافه به سبد|add to cart/i.test(t)) return true;
 		return false;
 	}
 
@@ -200,7 +207,7 @@ final class Hanzobot_Login_Required_Cart {
 
 	document.addEventListener('click', function (e) {
 		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-		var el = e.target.closest('a, button, input[type="submit"]');
+		var el = e.target.closest('a, button, input[type="submit"], input[type="button"], [role="button"], div, span, li');
 		if (!el || el.disabled) return;
 		if (skip(el)) return;
 		if (!isAddBtn(el)) return;
@@ -218,6 +225,10 @@ final class Hanzobot_Login_Required_Cart {
 		if (!pid) {
 			var wrap = el.closest('[data-product_id]');
 			pid = wrap ? wrap.getAttribute('data-product_id') : '';
+		}
+		if (!pid && document.body && document.body.className) {
+			var m = document.body.className.match(/(?:postid|page-id)-(\d+)/);
+			pid = m ? m[1] : '';
 		}
 
 		if (pid) {
@@ -351,6 +362,42 @@ JS;
 		}
 
 		return false;
+	}
+
+	/**
+	 * ۳-ب) مسیرهای REST اختصاصیِ سبد (مثل hamyar/v1/cart/add) برای مهمان‌ها
+	 * قبل از اجرا بسته شوند؛ پاسخ 401 به‌همراه آدرس ورود.
+	 *
+	 * @param mixed           $result  نتیجه‌ی قبلی.
+	 * @param WP_REST_Server  $server  سرور REST.
+	 * @param WP_REST_Request $request درخواست.
+	 * @return mixed
+	 */
+	public static function block_guest_cart_rest( $result, $server = null, $request = null ) {
+
+		if ( is_user_logged_in() || ! ( $request instanceof WP_REST_Request ) ) {
+			return $result;
+		}
+
+		$route = $request->get_route();
+
+		if ( ! $route || ! preg_match( '#^/[a-z0-9_\-]+/v[0-9]+/cart/#i', $route ) ) {
+			return $result;
+		}
+
+		// مسیر Store API هسته را دست نمی‌زنیم (بلاک‌های ووکامرس).
+		if ( 0 === strpos( $route, '/wc/store' ) ) {
+			return $result;
+		}
+
+		return new WP_Error(
+			'hzlrc_login_required',
+			self::login_notice_text(),
+			array(
+				'status'    => 401,
+				'login_url' => self::login_page_url(),
+			)
+		);
 	}
 
 	/* ---------------------------------------------------------------------
