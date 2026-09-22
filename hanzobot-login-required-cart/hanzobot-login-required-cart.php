@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name:       Hanzobot: Login Required for Add to Cart
- * Description:       مهمان‌ها با کلیک روی «افزودن به سبد خرید» به صفحه ورود هدایت می‌شوند و پس از ورود موفق، به همراه محصول به سبد خرید (یا صفحه محصول) برمی‌گردند.
- * Version:           1.0.0
+ * Description:       مهمان‌ها با کلیک روی «افزودن به سبد خرید» به صفحه ورود هدایت می‌شوند و پس از ورود موفق (فرم، مودال یا ورود پیامکی)، به همراه محصول به سبد خرید (یا صفحه محصول) برمی‌گردند.
+ * Version:           1.1.0
  * Author:            Hanzobot
  * License:           GPL-2.0-or-later
  * Requires at least: 5.8
@@ -21,9 +21,24 @@ final class Hanzobot_Login_Required_Cart {
 	const SESSION_KEY = 'hzlrc_pending';
 
 	/**
-	 * نام پارامتر کوئری‌استرینگ که مقصدِ پس از ورود را حمل می‌کند.
+	 * پارامتر کوئری‌استرینگ حمل‌کننده‌ی مقصدِ پس از ورود.
 	 */
 	const REDIRECT_ARG = 'hzlrc_redirect';
+
+	/**
+	 * usermeta: زمان آخرین ورود موفق (برای گرفتن مقصد بعد از لاگین آجاکسی/مودالی).
+	 */
+	const STAMP_META = 'hzlrc_login_stamp';
+
+	/**
+	 * عمر مهر ورود (ثانیه).
+	 */
+	const STAMP_TTL = 600; // ۱۰ دقیقه.
+
+	/**
+	 * عمر داده‌ی سشن (ثانیه).
+	 */
+	const PENDING_TTL = 7200; // ۲ ساعت.
 
 	/**
 	 * آیا در همین درخواست، افزودن به سبد توسط مهمان انجام شده است؟
@@ -49,6 +64,7 @@ final class Hanzobot_Login_Required_Cart {
 		// ۲) پشتیبان: اگر قالب/افزونه‌ای AJAX افزودن به سبد را برای مهمان‌ها اجباری کرد،
 		//    پاسخ JSON استاندارد ووکامرس را بده تا مرورگر به صفحه ورود هدایت شود.
 		add_action( 'wc_ajax_add_to_cart', array( __CLASS__, 'ajax_add_to_cart_gate' ), 9 );
+		add_action( 'wp_ajax_nopriv_woocommerce_add_to_cart', array( __CLASS__, 'ajax_add_to_cart_gate' ), 9 );
 
 		// ۳) بلافاصله بعد از افزودن موفق توسط مهمان: مقصد برگشت را ذخیره کن
 		//    و از طریق فیلتر رسمی ووکامرس، آدرس صفحه ورود را برگردان.
@@ -62,6 +78,13 @@ final class Hanzobot_Login_Required_Cart {
 		add_filter( 'woocommerce_login_redirect', array( __CLASS__, 'after_login_redirect' ), 20, 2 );
 		add_filter( 'woocommerce_registration_redirect', array( __CLASS__, 'after_login_redirect' ), 20 );
 		add_filter( 'login_redirect', array( __CLASS__, 'wp_login_redirect' ), 20, 3 );
+
+		// ۶) پشتیبانی از ورود آجاکسی/مودالی (مثلاً ورود پیامکی با کد یکبارمصرف):
+		//    این افزونه‌ها معمولاً صفحه را جایی خودشان می‌فرستند؛ ما زمان ورود را مهر می‌زنیم
+		//    و در اولین بارگیری صفحه‌ی بعدی، کاربر را به سبد خرید برمی‌گردانیم.
+		add_action( 'wp_login', array( __CLASS__, 'stamp_login_time' ), 10, 2 );
+		add_action( 'user_register', array( __CLASS__, 'stamp_login_time' ), 10 );
+		add_action( 'template_redirect', array( __CLASS__, 'catch_up_after_login' ), 30 );
 	}
 
 	/**
@@ -72,6 +95,10 @@ final class Hanzobot_Login_Required_Cart {
 		echo esc_html__( 'افزونه «لاگین اجباری برای افزودن به سبد خرید» برای کار کردن به ووکامرس نیاز دارد.', 'hanzobot-login-required-cart' );
 		echo '</p></div>';
 	}
+
+	/* ---------------------------------------------------------------------
+	 * سمت مهمان: اجازه‌ی افزودن + ریدایرکت به ورود
+	 * ------------------------------------------------------------------ */
 
 	/**
 	 * ۱) غیرفعال کردن AJAX افزودن به سبد فقط برای مهمان‌ها (فقط سمت سایت).
@@ -130,7 +157,7 @@ final class Hanzobot_Login_Required_Cart {
 		}
 
 		if ( ! $added ) {
-			// افزودن ناموفق بود (مثلاً ناموجود): طبق رفتار استاندارد به صفحه محصول برو.
+			// افزودن ناموفق بود (مثلاً گزینه‌ای انتخاب نشده یا ناموجود): به صفحه محصول برگرد.
 			wp_send_json(
 				array(
 					'error'       => true,
@@ -238,8 +265,12 @@ final class Hanzobot_Login_Required_Cart {
 		exit;
 	}
 
+	/* ---------------------------------------------------------------------
+	 * سمت کاربر: برگشت به مقصد بعد از ورود (هر روش ورودی)
+	 * ------------------------------------------------------------------ */
+
 	/**
-	 * ۵) پس از ورود/ثبت‌نام: به مقصد ذخیره‌شده برگرد (پیش‌فرض: سبد خرید).
+	 * ۵) فیلترهای ورود/ثبت‌نام (فرم صفحه‌ای): به مقصد ذخیره‌شده برگرد.
 	 *
 	 * @param string $redirect مقصد پیش‌فرض.
 	 * @param mixed  $user     کاربر.
@@ -263,13 +294,81 @@ final class Hanzobot_Login_Required_Cart {
 	/**
 	 * ۵-ب) پشتیبانی از ورود از طریق wp-login.php (فیلتر هسته‌ی login_redirect).
 	 *
-	 * @param string   $redirect_to           مقصد پیش‌فرض.
-	 * @param string   $requested_redirect_to پارامتر redirect_to درخواست.
-	 * @param WP_User  $user                  کاربر.
+	 * @param string  $redirect_to           مقصد پیش‌فرض.
+	 * @param string  $requested_redirect_to پارامتر redirect_to درخواست.
+	 * @param WP_User $user                  کاربر.
 	 * @return string
 	 */
 	public static function wp_login_redirect( $redirect_to, $requested_redirect_to = '', $user = null ) {
 		return self::after_login_redirect( $redirect_to, $user );
+	}
+
+	/**
+	 * ۶) مهر زمانی ورود: افزونه‌های ورود آجاکسی (مودال/پیامکی) صفحه را خودشان
+	 * جایی می‌فرستند؛ این مهر به ما می‌گوید «همین الان» لاگین شده است.
+	 *
+	 * @param int|string $user_id_or_login شناسه یا نام کاربری.
+	 */
+	public static function stamp_login_time( $user_id_or_login = 0 ) {
+
+		$user_id = 0;
+
+		if ( is_object( $user_id_or_login ) && isset( $user_id_or_login->ID ) ) {
+			$user_id = (int) $user_id_or_login->ID;
+		} elseif ( is_numeric( $user_id_or_login ) && $user_id_or_login ) {
+			$user_id = (int) $user_id_or_login;
+		} elseif ( is_string( $user_id_or_login ) && $user_id_or_login ) {
+			$user = get_user_by( 'login', $user_id_or_login );
+			$user_id = $user ? (int) $user->ID : 0;
+		}
+
+		if ( $user_id ) {
+			update_user_meta( $user_id, self::STAMP_META, time() );
+		}
+	}
+
+	/**
+	 * ۶-ب) اولین بارگیری صفحه بعد از ورود آجاکسی/مودالی:
+	 * اگر کاربر همین حالا وارد شده و داده‌ی «افزودن مهمان» تازه است،
+	 * او را به سبد خرید (یا صفحه محصول) بفرست.
+	 */
+	public static function catch_up_after_login() {
+
+		if ( is_admin() || wp_doing_ajax() || ! is_user_logged_in() ) {
+			return;
+		}
+
+		$has_url_arg = ! empty( $_GET[ self::REDIRECT_ARG ] ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$has_stamp   = self::has_fresh_stamp();
+
+		if ( ! $has_url_arg && ! $has_stamp ) {
+			return;
+		}
+
+		$data = self::get_pending();
+
+		if ( empty( $data ) || ! self::is_fresh( $data ) ) {
+			self::clear_stamp(); // مهر بی‌دلیل نماند.
+			return;
+		}
+
+		// اگر همین حالت را فیلترهای ورود مدیریت کرده‌اند، داده‌ای باقی نمی‌ماند؛
+		// رسیدن به اینجا یعنی ورود به‌صورت آجاکسی (مودال) انجام شده است.
+		$target = self::pick_target_from_pending( $data );
+
+		self::clear_pending();
+		self::clear_stamp();
+
+		if ( ! $target ) {
+			return;
+		}
+
+		if ( function_exists( 'wc_add_notice' ) ) {
+			wc_add_notice( self::success_notice_text(), 'success' );
+		}
+
+		wp_safe_redirect( $target );
+		exit;
 	}
 
 	/* ---------------------------------------------------------------------
@@ -277,7 +376,37 @@ final class Hanzobot_Login_Required_Cart {
 	 * ------------------------------------------------------------------ */
 
 	/**
-	 * محاسبه‌ی مقصد نهایی پس از ورود.
+	 * آیا مهر ورودِ تازه وجود دارد؟
+	 *
+	 * @return bool
+	 */
+	private static function has_fresh_stamp() {
+
+		$user_id = get_current_user_id();
+
+		if ( ! $user_id ) {
+			return false;
+		}
+
+		$stamp = (int) get_user_meta( $user_id, self::STAMP_META, true );
+
+		return $stamp > 0 && ( time() - $stamp ) < self::STAMP_TTL;
+	}
+
+	/**
+	 * پاک کردن مهر ورود.
+	 */
+	private static function clear_stamp() {
+
+		$user_id = get_current_user_id();
+
+		if ( $user_id ) {
+			delete_user_meta( $user_id, self::STAMP_META );
+		}
+	}
+
+	/**
+	 * محاسبه‌ی مقصد نهایی پس از ورود (برای مسیر فیلترهای ورود).
 	 *
 	 * ترتیب: پارامتر کوئری → مقصد ذخیره‌شده در سشن → خالی (یعنی دخالت نکن).
 	 *
@@ -300,6 +429,7 @@ final class Hanzobot_Login_Required_Cart {
 
 			if ( $validated ) {
 				self::clear_pending();
+				self::clear_stamp();
 				return $validated;
 			}
 		}
@@ -307,13 +437,14 @@ final class Hanzobot_Login_Required_Cart {
 		// داده‌ی ذخیره‌شده در سشن (مثلاً وقتی کاربر بعداً از صفحه حساب وارد شد).
 		$data = self::get_pending();
 
-		if ( empty( $data ) ) {
+		if ( empty( $data ) || ! self::is_fresh( $data ) ) {
 			return '';
 		}
 
 		$target = self::pick_target_from_pending( $data );
 
 		self::clear_pending();
+		self::clear_stamp();
 
 		return $target;
 	}
@@ -337,6 +468,16 @@ final class Hanzobot_Login_Required_Cart {
 		}
 
 		return function_exists( 'wc_get_cart_url' ) ? wc_get_cart_url() : home_url( '/' );
+	}
+
+	/**
+	 * آیا داده‌ی سشن هنوز تازه است؟
+	 *
+	 * @param array $data داده‌ی ذخیره‌شده.
+	 * @return bool
+	 */
+	private static function is_fresh( $data ) {
+		return empty( $data['time'] ) || ( time() - (int) $data['time'] ) < self::PENDING_TTL;
 	}
 
 	/**
@@ -368,7 +509,7 @@ final class Hanzobot_Login_Required_Cart {
 
 		$data = self::get_pending();
 
-		if ( ! empty( $data ) ) {
+		if ( ! empty( $data ) && self::is_fresh( $data ) ) {
 			return self::pick_target_from_pending( $data );
 		}
 
