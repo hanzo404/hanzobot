@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Hanzobot: Login Required for Add to Cart
  * Description:       مهمان‌ها با کلیک روی «افزودن به سبد خرید» به صفحه ورود هدایت می‌شوند و پس از ورود، به همراه محصول به سبد خرید برمی‌گردند. سازگار با ودمارت، باکس‌های خرید سفارشی (REST اختصاصی) و ورود پیامکی (OTP).
- * Version:           1.2.3
+ * Version:           1.2.4
  * Author:            Hanzobot
  * License:           GPL-2.0-or-later
  * Requires at least: 5.8
@@ -129,7 +129,7 @@ final class Hanzobot_Login_Required_Cart {
 			return;
 		}
 
-		wp_register_script( 'hzlrc-guest', '', array(), '1.2.3', true );
+		wp_register_script( 'hzlrc-guest', '', array(), '1.2.4', true );
 		wp_enqueue_script( 'hzlrc-guest' );
 
 		wp_localize_script(
@@ -161,7 +161,23 @@ final class Hanzobot_Login_Required_Cart {
 	// اگر کاربر لاگین باشد (مثلاً کش اشتباهی صفحه مهمان را به او داده) هیچ کاری نکن.
 	if (document.body && document.body.classList && document.body.classList.contains('logged-in')) return;
 
-	function go() { window.location.href = D.loginUrl; }
+	function go(url) { window.location.href = url || D.loginUrl; }
+
+	function samePage(url) {
+		try {
+			var a = document.createElement('a');
+			a.href = url;
+			return a.pathname === window.location.pathname;
+		} catch (e) { return false; }
+	}
+
+	// ثبت مقصد برگشت در کوکی (وقتی افزودن سمت سرور انجام نمی‌شود).
+	function setReturnCookie() {
+		try {
+			var v = Math.floor(Date.now() / 1000) + '|' + window.location.href;
+			document.cookie = 'hzlrc_return=' + encodeURIComponent(v) + '; path=/; max-age=7200' + (window.location.protocol === 'https:' ? '; secure' : '');
+		} catch (e) {}
+	}
 
 	function formComplete(form) {
 		var s = form.querySelectorAll('select[name^="attribute_"]');
@@ -173,14 +189,17 @@ final class Hanzobot_Login_Required_Cart {
 
 	function send(body) {
 		var sent = false;
-		var target = D.loginUrl; // پیش‌فرض؛ اگر سرور آدرس دقیق‌تری داد، از همان استفاده می‌شود.
-		function fire() { if (sent) return; sent = true; window.location.href = target; }
-		setTimeout(fire, 3000); // مهلت امن: در هر حالتی به ورود برو.
+		var target = D.loginUrl;
+		function fire() { if (sent) return; sent = true; go(target); }
+		setTimeout(fire, 3500); // مهلت امن: در هر حالتی به ورود برو.
 		try {
 			fetch(D.ajaxUrl, { method: 'POST', credentials: 'same-origin', body: body, cache: 'no-store' })
 				.then(function (r) { return r.json(); })
 				.then(function (j) {
-					if (j && j.product_url) { target = j.product_url; }
+					// هرگز به همان صفحه‌ی فعلی نرو (reload بی‌صدا ممنوع).
+					if (j && j.product_url && !samePage(j.product_url)) {
+						target = j.product_url;
+					}
 					fire();
 				})['catch'](function () { fire(); });
 		} catch (e) { fire(); }
@@ -190,6 +209,33 @@ final class Hanzobot_Login_Required_Cart {
 		var fd = new FormData(form);
 		fd.set('hzlrc', '1');
 		if (!fd.get('quantity')) fd.set('quantity', '1');
+		return fd;
+	}
+
+	// جمع‌آوری فیلدها از کل صفحه (برای باکس‌های خرید سفارشی خارج از فرم ووکامرس).
+	function fdFromPage(pid) {
+		var fd = new FormData();
+		fd.set('hzlrc', '1');
+		fd.set('product_id', pid);
+
+		var q = document.querySelector('input[name="quantity"]');
+		fd.set('quantity', (q && q.value) ? q.value : '1');
+
+		var vid = document.querySelector('input[name="variation_id"]');
+		if (vid && vid.value) fd.set('variation_id', vid.value);
+
+		var sels = document.querySelectorAll('select[name^="attribute_"]');
+		for (var i = 0; i < sels.length; i++) {
+			if (!sels[i].value) return null; // گزینه‌ای انتخاب نشده؛ دخالت نکن.
+			fd.set(sels[i].name, sels[i].value);
+		}
+
+		// محصول متغیر ولی variation هنوز مشخص نیست: افزودن قطعاً شکست می‌خورد.
+		if (sels.length > 0 && !(vid && vid.value)) {
+			setReturnCookie();
+			return 'login-only'; // اول ورود؛ بعد از برگشت به صفحه محصول دوباره افزودن.
+		}
+
 		return fd;
 	}
 
@@ -212,15 +258,28 @@ final class Hanzobot_Login_Required_Cart {
 
 	document.addEventListener('click', function (e) {
 		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-		var el = e.target.closest('a, button, input[type="submit"], input[type="button"], [role="button"], div, span, li');
-		if (!el || el.disabled) return;
-		if (skip(el)) return;
-		if (!isAddBtn(el)) return;
 
-		var form = el.closest('form.cart');
+		// اول خودِ دکمه/لینک واقعی؛ اگر دکمه نبود یا دکمه‌ی دیگری بود، سراغ div/span/li برو.
+		var el = e.target.closest('button, a, [role="button"], input[type="submit"], input[type="button"]');
+		if (!el || !isAddBtn(el)) {
+			el = e.target.closest('div, span, li');
+			if (!el || !isAddBtn(el)) return;
+		}
+		if (el.disabled) return;
+		if (skip(el)) return;
+
+		// فرم ووکامرسی کلاسیک، یا هر فرمی که فیلدهای افزودن به سبد را دارد.
+		var form = el.closest('form');
+		if (form && form.querySelector('input[type="password"], input[name="log"], input[name="pwd"], input[name="wp-submit"], input[name="username"], input[name="reg_email"]')) {
+			form = null; // فرم ورود/ثبت‌نام است، نه افزودن به سبد.
+		}
+		if (form && !form.classList.contains('cart') && !form.querySelector('select[name^="attribute_"], input[name="variation_id"], input[name="add-to-cart"], input[name="product_id"]')) {
+			form = null;
+		}
+
 		if (form) {
-			if (form.querySelector('.group_table')) return; // محصولات گروهی: توقیف سمت سرور انجام می‌شود.
-			if (!formComplete(form)) return;                // گزینه انتخاب نشده: JS خود ووکامرس پیام بدهد.
+			if (form.querySelector('.group_table')) return; // محصولات گروهی: توقیف سمت سرور.
+			if (!formComplete(form)) return;                // گزینه انتخاب نشده: JS خود سایت پیام بدهد.
 			e.preventDefault(); e.stopPropagation();
 			send(fdForm(form));
 			return;
@@ -237,17 +296,24 @@ final class Hanzobot_Login_Required_Cart {
 		}
 
 		if (pid) {
-			e.preventDefault(); e.stopPropagation();
-			var fd = new FormData();
-			fd.set('hzlrc', '1');
-			fd.set('product_id', pid);
-			fd.set('quantity', el.getAttribute('data-quantity') || '1');
-			send(fd);
-			return;
+			var fd = fdFromPage(pid);
+			if (fd === 'login-only') {
+				// variation نامشخص: اول ورود؛ بعد از برگشت به صفحه‌ی محصول، دوباره افزودن.
+				e.preventDefault(); e.stopPropagation();
+				go();
+				return;
+			}
+			if (fd) {
+				e.preventDefault(); e.stopPropagation();
+				send(fd);
+				return;
+			}
+			return; // گزینه‌ای انتخاب نشده: JS خود سایت پیام بدهد.
 		}
 
-		// دکمه بدون اطلاعات محصول: فقط به ورود برو.
+		// هیچ اطلاعاتی از محصول پیدا نشد: به ورود برو (مقصد برگشت در کوکی ثبت می‌شود).
 		e.preventDefault(); e.stopPropagation();
+		setReturnCookie();
 		go();
 	}, true);
 
@@ -392,6 +458,13 @@ JS;
 
 		// مسیر Store API هسته را دست نمی‌زنیم (بلاک‌های ووکامرس).
 		if ( 0 === strpos( $route, '/wc/store' ) ) {
+			return $result;
+		}
+
+		// خواندن وضعیت سبد برای مهمان مانعی ندارد (ویجت سبد قالب نباید بشکند).
+		$method = $request->get_method();
+
+		if ( 'GET' === $method || 'OPTIONS' === $method || 'HEAD' === $method ) {
 			return $result;
 		}
 
@@ -740,7 +813,7 @@ JS;
 			return '';
 		}
 
-		$raw = wp_unslash( $_COOKIE[ self::COOKIE ] ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$raw = rawurldecode( wp_unslash( $_COOKIE[ self::COOKIE ] ) ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 		$sep = strpos( $raw, '|' );
 
 		if ( false === $sep ) {
