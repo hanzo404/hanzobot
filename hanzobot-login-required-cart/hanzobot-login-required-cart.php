@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Hanzobot: Login Required for Add to Cart
  * Description:       مهمان‌ها با کلیک روی «افزودن به سبد خرید» به صفحه ورود هدایت می‌شوند و پس از ورود، به همراه محصول به سبد خرید برمی‌گردند. سازگار با ودمارت، باکس‌های خرید سفارشی (REST اختصاصی) و ورود پیامکی (OTP).
- * Version:           1.2.2
+ * Version:           1.2.3
  * Author:            Hanzobot
  * License:           GPL-2.0-or-later
  * Requires at least: 5.8
@@ -129,7 +129,7 @@ final class Hanzobot_Login_Required_Cart {
 			return;
 		}
 
-		wp_register_script( 'hzlrc-guest', '', array(), '1.2.2', true );
+		wp_register_script( 'hzlrc-guest', '', array(), '1.2.3', true );
 		wp_enqueue_script( 'hzlrc-guest' );
 
 		wp_localize_script(
@@ -173,11 +173,16 @@ final class Hanzobot_Login_Required_Cart {
 
 	function send(body) {
 		var sent = false;
-		function fire() { if (sent) return; sent = true; go(); }
+		var target = D.loginUrl; // پیش‌فرض؛ اگر سرور آدرس دقیق‌تری داد، از همان استفاده می‌شود.
+		function fire() { if (sent) return; sent = true; window.location.href = target; }
 		setTimeout(fire, 3000); // مهلت امن: در هر حالتی به ورود برو.
 		try {
 			fetch(D.ajaxUrl, { method: 'POST', credentials: 'same-origin', body: body, cache: 'no-store' })
-				.then(fire)['catch'](fire);
+				.then(function (r) { return r.json(); })
+				.then(function (j) {
+					if (j && j.product_url) { target = j.product_url; }
+					fire();
+				})['catch'](function () { fire(); });
 		} catch (e) { fire(); }
 	}
 
