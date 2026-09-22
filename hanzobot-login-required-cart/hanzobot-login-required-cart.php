@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Hanzobot: Login Required for Add to Cart
  * Description:       مهمان‌ها با کلیک روی «افزودن به سبد خرید» به صفحه ورود هدایت می‌شوند و پس از ورود، به همراه محصول به سبد خرید برمی‌گردند. سازگار با ودمارت، باکس‌های خرید سفارشی (REST اختصاصی) و ورود پیامکی (OTP).
- * Version:           1.2.4
+ * Version:           1.2.5
  * Author:            Hanzobot
  * License:           GPL-2.0-or-later
  * Requires at least: 5.8
@@ -44,6 +44,11 @@ final class Hanzobot_Login_Required_Cart {
 	 * عمر داده‌ی سشن/کوکی (ثانیه).
 	 */
 	const PENDING_TTL = 7200;
+
+	/**
+	 * نسخه‌ی افزونه.
+	 */
+	const PLUGIN_VER = '1.2.5';
 
 	/**
 	 * @var bool افزودن موفق توسط مهمان در همین درخواست.
@@ -101,6 +106,9 @@ final class Hanzobot_Login_Required_Cart {
 		add_action( 'wp_login', array( __CLASS__, 'stamp_login_time' ), 10, 2 );
 		add_action( 'user_register', array( __CLASS__, 'stamp_login_time' ), 10 );
 		add_action( 'template_redirect', array( __CLASS__, 'catch_up_after_login' ), 30 );
+
+		// ۸) گزارش عیب‌یابی: ?hzlrc_debug=1
+		add_action( 'template_redirect', array( __CLASS__, 'debug_report' ), 15 );
 	}
 
 	/**
@@ -129,13 +137,14 @@ final class Hanzobot_Login_Required_Cart {
 			return;
 		}
 
-		wp_register_script( 'hzlrc-guest', '', array(), '1.2.4', true );
+		wp_register_script( 'hzlrc-guest', '', array(), self::PLUGIN_VER, true );
 		wp_enqueue_script( 'hzlrc-guest' );
 
 		wp_localize_script(
 			'hzlrc-guest',
 			'hzlrcData',
 			array(
+				'ver'      => self::PLUGIN_VER,
 				'ajaxUrl'  => add_query_arg( 'wc-ajax', 'add_to_cart', trailingslashit( home_url( '/' ) ) ),
 				'loginUrl' => self::login_page_url(),
 			)
@@ -659,6 +668,87 @@ JS;
 	 * ------------------------------------------------------------------ */
 
 	/**
+	 * گزارش عیب‌یابی: با باز کردن سایت به‌علاوه‌ی ?hzlrc_debug=1
+	 */
+	public static function debug_report() {
+
+		if ( empty( $_GET['hzlrc_debug'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			return;
+		}
+
+		$is_manager = current_user_can( 'manage_woocommerce' );
+
+		// کاربر لاگین‌شده‌ی عادی: گزارش نشان نده.
+		if ( is_user_logged_in() && ! $is_manager ) {
+			return;
+		}
+
+		$rows = array();
+
+		$rows['plugin_version'] = self::PLUGIN_VER;
+		$rows['logged_in']      = is_user_logged_in() ? 'YES' : 'no';
+
+		$data   = self::get_pending();
+		$cookie = self::get_return_cookie();
+
+		$rows['hzlrc_pending_session'] = ! empty( $data ) ? wp_json_encode( $data ) : '(empty)';
+		$rows['hzlrc_return_cookie']   = $cookie ? $cookie : '(empty)';
+
+		if ( function_exists( 'WC' ) && WC()->session ) {
+			$legacy = WC()->session->get( 'login_required_cart_item' );
+			$rows['LEGACY_old_code'] = ! empty( $legacy ) ? 'FOUND!! → کد قدیمی هنوز فعال است؛ حذفش کنید' : '(none)';
+		}
+
+		$rows['server_http_referer'] = ! empty( $_SERVER['HTTP_REFERER'] ) ? esc_url_raw( wp_unslash( $_SERVER['HTTP_REFERER'] ) ) : '(none)';
+
+		if ( $is_manager ) {
+			$uid   = get_current_user_id();
+			$stamp = $uid ? (int) get_user_meta( $uid, self::STAMP_META, true ) : 0;
+			$rows['login_stamp'] = $stamp ? $stamp . ' (' . ( time() - $stamp ) . 's ago)' : '(none)';
+		}
+
+		$rows['guest_js']        = is_user_logged_in() ? 'n/a' : ( apply_filters( 'hzlrc_enable_guest_js', true ) ? 'will inject' : 'disabled via filter' );
+		$rows['login_url_built'] = self::login_page_url();
+
+		header( 'Content-Type: text/html; charset=utf-8' );
+		echo '<!doctype html><meta charset="utf-8"><title>HZLRC Debug</title>';
+		echo '<div dir="ltr" style="font:14px/1.9 monospace;background:#101418;color:#d5f5d5;padding:24px;border-radius:10px;max-width:820px;margin:40px auto;">';
+		echo '<h3 style="color:#fff;margin:0 0 12px">HZLRC Debug — v' . esc_html( self::PLUGIN_VER ) . '</h3>';
+		echo '<table style="border-collapse:collapse">';
+		foreach ( $rows as $k => $v ) {
+			echo '<tr><td style="padding:3px 18px 3px 0;color:#ffd479;white-space:nowrap">' . esc_html( $k ) . '</td><td>' . esc_html( $v ) . '</td></tr>';
+		}
+		echo '</table>';
+		echo '<p style="color:#8fb">Test: guest &gt; product page &gt; click add &gt; must go to my-account?hzlrc_redirect=&lt;same product url&gt; &gt; login &gt; must return to the same product page.</p>';
+		echo '</div>';
+		exit;
+	}
+
+	/**
+	 * بهترین «آدرس صفحه‌ی برگشت» را پیدا می‌کند.
+	 *
+	 * اگر Referer فقط دامنه باشد (سیاست strict-origin) یا خالی باشد،
+	 * به‌جای صفحه‌ی اصلی سایت، صفحه‌ی خود محصول را برمی‌گردانیم.
+	 *
+	 * @param int $product_id شناسه محصول.
+	 * @return string
+	 */
+	private static function best_back_url( $product_id ) {
+
+		$ref = function_exists( 'wp_get_raw_referer' ) ? wp_get_raw_referer() : '';
+
+		if ( $ref ) {
+			$path = wp_parse_url( $ref, PHP_URL_PATH );
+
+			if ( $path && '/' !== $path ) {
+				return esc_url_raw( $ref );
+			}
+		}
+
+		return $product_id ? get_permalink( absint( $product_id ) ) : '';
+	}
+
+	/**
 	 * ذخیره‌ی قصد برگشت در سشن + کوکی (کوکی چون سشن مهمان ممکن است بعد از لاگین عوض شود).
 	 *
 	 * @param int $product_id شناسه محصول.
@@ -669,11 +759,7 @@ JS;
 			return;
 		}
 
-		$back = wp_get_referer();
-
-		if ( ! $back && $product_id ) {
-			$back = get_permalink( $product_id );
-		}
+		$back = self::best_back_url( $product_id );
 
 		$data = array(
 			'product_id' => absint( $product_id ),
