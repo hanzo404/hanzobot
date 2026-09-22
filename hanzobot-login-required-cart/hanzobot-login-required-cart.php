@@ -663,7 +663,7 @@ JS;
 	 */
 	private static function pick_target_from_pending( $data ) {
 
-		$mode = apply_filters( 'hzlrc_return_mode', 'cart' );
+		$mode = apply_filters( 'hzlrc_return_mode', 'back' ); // 'back' = همان صفحه‌ای که کاربر بود (پیش‌فرض)، 'cart' = سبد خرید.
 
 		if ( 'back' === $mode && ! empty( $data['back_url'] ) ) {
 			$validated = wp_validate_redirect( esc_url_raw( $data['back_url'] ), '' );
