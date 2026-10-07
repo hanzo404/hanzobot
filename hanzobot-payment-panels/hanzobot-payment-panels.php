@@ -78,6 +78,7 @@ final class Hanzobot_Payment_Panels {
 		// —— تسویه‌حساب و سفارش ————————————————————————
 		add_filter( 'woocommerce_available_payment_gateways', array( __CLASS__, 'lock_gateways' ), 99 );
 		add_action( 'woocommerce_checkout_process', array( __CLASS__, 'validate_checkout' ) );
+		add_action( 'woocommerce_store_api_cart_errors', array( __CLASS__, 'store_api_cart_errors' ), 10, 2 );
 		add_action( 'woocommerce_checkout_create_order_line_item', array( __CLASS__, 'order_line_item_meta' ), 10, 4 );
 		add_action( 'woocommerce_checkout_order_created', array( __CLASS__, 'annotate_order' ) );
 		add_action( 'woocommerce_store_api_checkout_order_processed', array( __CLASS__, 'annotate_order' ) );
@@ -1717,6 +1718,34 @@ JS;
 		$chosen = isset( $_POST['payment_method'] ) ? sanitize_key( wp_unslash( $_POST['payment_method'] ) ) : '';
 		if ( $chosen && ! in_array( $chosen, $allowed, true ) ) {
 			wc_add_notice( 'روش پرداخت انتخابی با پنل «' . esc_html( self::plan_label( $plan ) ) . '» هم‌خوان نیست؛ لطفاً همان درگاه این پنل را انتخاب کنید.', 'error' );
+		}
+	}
+
+	/**
+	 * اعتبارسنجی سبد در تسویه‌حساب بلاکی / فروشگاه (Store API) — معادل بلاکیِ validate_checkout.
+	 *
+	 * درگاه پرداخت در مسیر بلاکی هم توسط همین افزونه قفل می‌شود، چون Store API فهرست درگاه‌های مجاز را
+	 * از get_available_payment_gateways() می‌گیرد و اگر درگاه ارسالی در آن نباشد خطا می‌دهد.
+	 *
+	 * @param WP_Error $errors خطاهای سبد (شیء مشترک؛ داخل همین تابع پر می‌شود).
+	 * @param WC_Cart  $cart   سبد.
+	 */
+	public static function store_api_cart_errors( $errors, $cart = null ) {
+
+		if ( ! $errors instanceof WP_Error ) {
+			return;
+		}
+		if ( ! function_exists( 'WC' ) || ! WC()->cart ) {
+			return;
+		}
+
+		$plan = self::cart_plan();
+
+		if ( 'mixed' === $plan && 'block' === self::settings()['general']['mixed_action'] ) {
+			$errors->add(
+				'hzmp_mixed_plans',
+				'در سبد شما محصولاتی با روش‌های پرداخت متفاوت وجود دارد. برای پرداخت با درگاه‌های اقساطی، لطفاً هر روش پرداخت را در یک سفارش جداگانه ثبت کنید.'
+			);
 		}
 	}
 
