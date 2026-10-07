@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>پیش‌نمایش پنل‌های پرداخت و قیمت‌ها — هانزبات</title>
+<style>
+:root{--ink:#1d2430;--muted:#6b7684;--line:#e8eaee;--bg:#f6f7f9;--card:#fff;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Tahoma,Vazirmatn,IRANSans,"Segoe UI",system-ui,sans-serif;line-height:1.9}
+.wrap{max-width:1080px;margin:0 auto;padding:22px 16px 60px}
+h1.title{font-size:20px;margin:0 0 6px}
+.lead{color:var(--muted);font-size:13px;margin:0 0 18px}
+.grid{display:grid;grid-template-columns:1.6fr 1fr;gap:18px;align-items:start}
+@media (max-width:900px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px}
+.pdp{display:flex;gap:16px;align-items:flex-start}
+.pdp__media{flex:0 0 104px;height:104px;border-radius:14px;background:linear-gradient(135deg,#fff3e0,#ffe0b2);display:flex;align-items:center;justify-content:center;font-size:46px}
+.pdp__body{flex:1 1 auto;min-width:0}
+.pdp__title{font-size:16px;font-weight:700;margin:0 0 6px}
+.pdp__meta{font-size:12px;color:var(--muted);margin:0 0 10px}
+.pdp__price{font-size:14px}
+.pdp__price b{font-size:18px}
+.qty{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px}
+.qty input{width:70px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;text-align:center;font-family:inherit}
+.tag{display:inline-block;font-size:11px;color:#0f7b52;background:#e6f7ef;border-radius:999px;padding:2px 8px;margin-inline-start:6px}
+aside h3{margin:0 0 10px;font-size:15px}
+.cart-line{display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:8px 0;border-bottom:1px dashed var(--line)}
+.cart-line b{font-weight:700}
+.cart-total{display:flex;justify-content:space-between;font-size:15px;font-weight:700;padding-top:12px}
+.gw{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.gw label{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:9px 11px;font-size:13px;cursor:pointer;background:#fff}
+.gw label.on{border-color:#1f7a4d;background:#f3fbf6}
+.gw label.lock{opacity:.45;text-decoration:line-through;cursor:not-allowed}
+.gw small{color:var(--muted);font-size:11px;margin-inline-start:auto}
+.hintline{font-size:12px;color:#b3261e;background:#fdeaea;border-radius:8px;padding:8px 10px;margin-top:10px}
+.okline{font-size:12px;color:#0f7b52;background:#e6f7ef;border-radius:8px;padding:8px 10px;margin-top:10px}
+.foot{margin-top:26px;font-size:12px;color:var(--muted)}
+code{background:#eef1f5;border-radius:6px;padding:1px 5px;font-family:inherit;direction:ltr;display:inline-block}
+.hzmp-box{direction:rtl;text-align:right;margin:18px 0 22px;font-family:inherit;--hzmp-line:#e6e6e6;--hzmp-bg:#fff;--hzmp-muted:#7b8794;}
+.hzmp-box *{box-sizing:border-box;}
+.hzmp-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;}
+.hzmp-head__icon{font-size:18px;line-height:1;}
+.hzmp-head__t{font-weight:700;font-size:16px;}
+.hzmp-head__s{color:var(--hzmp-muted);font-size:12px;}
+.hzmp-cards{display:flex;flex-direction:column;gap:12px;}
+.hzmp-card{position:relative;border:1px solid var(--hzmp-line);border-radius:14px;background:var(--hzmp-bg);padding:14px;transition:.18s border-color,.18s box-shadow,.18s transform;}
+.hzmp-card:hover{border-color:var(--hzmp-accent);box-shadow:0 6px 22px rgba(0,0,0,.06);}
+.hzmp-card.is-selected{border-color:var(--hzmp-accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--hzmp-accent) 18%,transparent);}
+.hzmp-card__top{display:flex;align-items:flex-start;gap:10px;}
+.hzmp-ava{flex:0 0 38px;width:38px;height:38px;border-radius:50%;background:var(--hzmp-accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;}
+.hzmp-ttl-wrap{display:flex;flex-direction:column;gap:3px;flex:1 1 auto;min-width:0;}
+.hzmp-ttl{font-weight:700;font-size:15px;}
+.hzmp-sub{color:var(--hzmp-muted);font-size:12px;}
+.hzmp-badge{font-size:11px;padding:3px 9px;border-radius:999px;white-space:nowrap;font-weight:600;}
+.hzmp-badge--success{background:#e6f7ef;color:#0f7b52;}
+.hzmp-badge--danger{background:#fdeaea;color:#b3261e;}
+.hzmp-badge--info{background:#eaf0ff;color:#2a4bdb;}
+.hzmp-badge--gold{background:#fff5df;color:#8a5b00;}
+.hzmp-feats{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:6px 16px;}
+.hzmp-feats li{font-size:12px;color:#3d4852;position:relative;padding-inline-start:16px;}
+.hzmp-feats li:before{content:"✓";position:absolute;inset-inline-start:0;color:var(--hzmp-accent);font-weight:700;}
+.hzmp-card__bottom{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:12px;border-top:1px dashed var(--hzmp-line);padding-top:12px;}
+.hzmp-price{display:flex;flex-direction:column;gap:3px;min-width:150px;}
+.hzmp-off{align-self:flex-start;background:#fdeaea;color:#b3261e;font-size:11px;padding:2px 8px;border-radius:6px;}
+.hzmp-was{color:var(--hzmp-muted);text-decoration:line-through;font-size:12px;}
+.hzmp-now{font-size:20px;font-weight:800;line-height:1.4;}
+.hzmp-now .hzmp-cur,.hzmp-now .hzmp-money{font-size:20px;}
+.hzmp-money{font-variant-numeric:tabular-nums;}
+.hzmp-from{font-size:12px;font-weight:500;color:var(--hzmp-muted);}
+.hzmp-cur{font-size:12px;font-weight:500;color:var(--hzmp-muted);margin-inline-start:4px;}
+.hzmp-ins{font-size:12px;color:#0f7b52;font-weight:600;}
+.hzmp-ins-note{font-size:11px;color:var(--hzmp-muted);}
+.hzmp-form{margin:0;display:flex;flex-direction:column;align-items:stretch;gap:6px;min-width:190px;}
+.hzmp-buy{width:100%;border-radius:10px !important;padding:11px 16px !important;font-weight:700 !important;background:var(--hzmp-accent) !important;border-color:var(--hzmp-accent) !important;color:#fff !important;cursor:pointer;}
+.hzmp-buy[disabled]{opacity:.5;cursor:not-allowed;}
+.hzmp-ok{font-size:12px;color:#0f7b52;font-weight:600;}
+.hzmp-ok a{margin-inline-start:6px;}
+.hzmp-card__note{font-size:11px;color:var(--hzmp-muted);margin-top:8px;}
+.hzmp-note{font-size:11px;color:var(--hzmp-muted);margin-top:10px;line-height:1.9;}
+.hzmp-hint{margin-top:10px;font-size:12px;color:#b3261e;background:#fdeaea;border-radius:8px;padding:8px 10px;}
+.hzmp-cart-note{margin:0 0 14px;padding:10px 12px;border:1px solid var(--hzmp-line,#e6e6e6);border-radius:10px;font-size:13px;background:#f8fbff;direction:rtl;text-align:right;}
+.hzmp-cart-note b{font-weight:700;}
+.hzmp-box.is-busy{opacity:.65;pointer-events:none;}
+@media (max-width:640px){
+  .hzmp-card__bottom{flex-direction:column;align-items:stretch;}
+  .hzmp-form{min-width:0;}
+  .hzmp-now{font-size:18px;}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 class="title">پیش‌نمایش: پنل فروشندگان + قیمت بر اساس درگاه پرداخت</h1>
+  <p class="lead">این صفحه دقیقاً با همان CSS و همان منطق قیمت‌گذاری افزونه‌ی <code>hanzobot-payment-panels</code> ساخته شده است؛ نمونه‌ی محصول و درگاه‌ها آزمایشی هستند تا رفتار پنل‌ها، محاسبه‌ی +۱۳٪ و قفل شدن درگاه را ببینید.</p>
+
+  <div class="grid">
+    <main>
+      <div class="panel pdp">
+        <div class="pdp__media">🧺</div>
+        <div class="pdp__body">
+          <h2 class="pdp__title">سبد پیک‌نیک ۶۰ پارچه هوم‌کت <span class="tag">موجود</span></h2>
+          <p class="pdp__meta">برند: هوم‌کت • کد کالا: ۱۰۰۱ • ارسال از انبار تهران</p>
+          <div class="pdp__price">قیمت پایه (قیمت اصلی محصول): <b id="main-price">۱٬۲۵۰٬۰۰۰ تومان</b></div>
+          <div class="qty"><span>تعداد:</span><input id="demo-qty" type="number" min="1" value="1"></div>
+        </div>
+      </div>
+
+      <!-- ============ همان خروجی افزونه ============ -->
+      <div class="hzmp-box" id="hzmp-box" dir="rtl" data-product="1001" data-variable="0" data-purchasable="1"
+           data-base-price="1250000" data-base-regular="1450000">
+
+        <div class="hzmp-head">
+          <span class="hzmp-head__icon" aria-hidden="true">👥</span>
+          <span class="hzmp-head__t">همه فروشندگان (۳)</span>
+          <span class="hzmp-head__s">قیمت نهایی به روش پرداخت انتخابی شما بستگی دارد.</span>
+        </div>
+
+        <div class="hzmp-cards">
+
+          <!-- پنل پایه -->
+          <div class="hzmp-card is-selected hzmp-card--gold" data-plan="base" data-pct="0" data-price="1250000" data-regular="1450000" data-installments="0" style="--hzmp-accent:#1f7a4d">
+            <div class="hzmp-card__top">
+              <span class="hzmp-ava" aria-hidden="true">ی</span>
+              <span class="hzmp-ttl-wrap">
+                <span class="hzmp-ttl">فروشنده‌ی اصلی — پرداخت آنلاین</span>
+                <span class="hzmp-sub">پرداخت با تمام کارت‌های عضو شتاب</span>
+              </span>
+              <span class="hzmp-badge hzmp-badge--gold">کم‌ترین قیمت</span>
+            </div>
+            <ul class="hzmp-feats"><li>ارسال فوری از انبار</li><li>پرداخت امن و مطمئن</li></ul>
+            <div class="hzmp-card__bottom">
+              <div class="hzmp-price">
+                <span class="hzmp-off">۲۰۰٬۰۰۰ تومان تخفیف</span>
+                <span class="hzmp-was"><span class="hzmp-money">1,450,000</span> <span class="hzmp-cur">تومان</span></span>
+                <span class="hzmp-now"><span class="hzmp-money">1,250,000</span> <span class="hzmp-cur">تومان</span></span>
+              </div>
+              <form class="hzmp-form" method="post" action="#" data-plan="base">
+                <input type="hidden" name="add-to-cart" value="1001">
+                <input type="hidden" name="product_id" value="1001">
+                <input type="hidden" name="quantity" value="1">
+                <input type="hidden" name="variation_id" value="">
+                <input type="hidden" name="hanzobot_plan" value="base">
+                <button type="submit" class="button alt hzmp-buy hzmp-add-to-cart" data-plan="base">افزودن به سبد خرید</button>
+                <span class="hzmp-ok" hidden></span>
+              </form>
+            </div>
+          </div>
+
+          <!-- اسنپ‌پی +۱۳٪ -->
+          <div class="hzmp-card hzmp-card--success" data-plan="p1" data-pct="13" data-price="1413000" data-regular="1639000" data-installments="4" style="--hzmp-accent:#00b2a9">
+            <div class="hzmp-card__top">
+              <span class="hzmp-ava" aria-hidden="true">س</span>
+              <span class="hzmp-ttl-wrap">
+                <span class="hzmp-ttl">درگاه پرداخت اسنپ‌پی</span>
+                <span class="hzmp-sub">خرید اقساطی و اعتباری با اسنپ‌پی</span>
+              </span>
+              <span class="hzmp-badge hzmp-badge--success">پرداخت اقساطی</span>
+            </div>
+            <ul class="hzmp-feats"><li>۴ قسط بدون ضامن و چک</li><li>قسط اول هنگام خرید</li></ul>
+            <div class="hzmp-card__bottom">
+              <div class="hzmp-price">
+                <span class="hzmp-off">۲۰۰٬۰۰۰ تومان تخفیف</span>
+                <span class="hzmp-was"><span class="hzmp-money">1,639,000</span> <span class="hzmp-cur">تومان</span></span>
+                <span class="hzmp-now"><span class="hzmp-money">1,413,000</span> <span class="hzmp-cur">تومان</span></span>
+                <span class="hzmp-ins">4 قسط × <span class="hzmp-money">353,000</span> <span class="hzmp-cur">تومان</span></span>
+              </div>
+              <form class="hzmp-form" method="post" action="#" data-plan="p1">
+                <input type="hidden" name="add-to-cart" value="1001">
+                <input type="hidden" name="product_id" value="1001">
+                <input type="hidden" name="quantity" value="1">
+                <input type="hidden" name="variation_id" value="">
+                <input type="hidden" name="hanzobot_plan" value="p1">
+                <button type="submit" class="button alt hzmp-buy hzmp-add-to-cart" data-plan="p1">خرید با اسنپ‌پی</button>
+                <span class="hzmp-ok" hidden></span>
+              </form>
+            </div>
+          </div>
+
+          <!-- ترب‌پی +۱۳٪ -->
+          <div class="hzmp-card hzmp-card--danger" data-plan="p2" data-pct="13" data-price="1413000" data-regular="1639000" data-installments="4" style="--hzmp-accent:#e63946">
+            <div class="hzmp-card__top">
+              <span class="hzmp-ava" aria-hidden="true">ت</span>
+              <span class="hzmp-ttl-wrap">
+                <span class="hzmp-ttl">درگاه پرداخت ترب‌پی</span>
+                <span class="hzmp-sub">پرداخت در ۴ قسط مساوی با ترب‌پی</span>
+              </span>
+              <span class="hzmp-badge hzmp-badge--danger">پرداخت اقساطی</span>
+            </div>
+            <ul class="hzmp-feats"><li>۴ قسط بدون ضامن و چک</li><li>اعتبارسنجی فوری با شماره موبایل</li></ul>
+            <div class="hzmp-card__bottom">
+              <div class="hzmp-price">
+                <span class="hzmp-off">۲۰۰٬۰۰۰ تومان تخفیف</span>
+                <span class="hzmp-was"><span class="hzmp-money">1,639,000</span> <span class="hzmp-cur">تومان</span></span>
+                <span class="hzmp-now"><span class="hzmp-money">1,413,000</span> <span class="hzmp-cur">تومان</span></span>
+                <span class="hzmp-ins">4 قسط × <span class="hzmp-money">353,000</span> <span class="hzmp-cur">تومان</span></span>
+              </div>
+              <form class="hzmp-form" method="post" action="#" data-plan="p2">
+                <input type="hidden" name="add-to-cart" value="1001">
+                <input type="hidden" name="product_id" value="1001">
+                <input type="hidden" name="quantity" value="1">
+                <input type="hidden" name="variation_id" value="">
+                <input type="hidden" name="hanzobot_plan" value="p2">
+                <button type="submit" class="button alt hzmp-buy hzmp-add-to-cart" data-plan="p2">خرید با ترب‌پی</button>
+                <span class="hzmp-ok" hidden></span>
+              </form>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="hzmp-hint" hidden></div>
+        <div class="hzmp-note">مبالغ اقساطی تقریبی است؛ شرایط نهایی در صفحه‌ی درگاه مشخص می‌شود.</div>
+      </div>
+      <!-- ============ پایان خروجی افزونه ============ -->
+    </main>
+
+    <aside class="panel">
+      <h3>سبد خرید و درگاه پرداخت (شبیه‌سازی)</h3>
+      <div id="cart-box"><div class="cart-line"><span>سبد خالی است</span><span>—</span></div></div>
+      <div id="gw-box"></div>
+    </aside>
+  </div>
+
+  <p class="foot">در تکنولایف هم دقیقاً همین الگو استفاده می‌شود: یک قیمت اصلی و کنار آن «فروشندگان طرف قرارداد اقساطی/اعتباری» با قیمت بالاتر. افزونه‌ی وردپرسیِ این صفحه آن الگو را با کارمزد درگاه (۱۳٪ دلخواه) روی سایت خودتان پیاده می‌کند.</p>
+</div>
+<script>
+(function () {
+  var D = {
+    fmt: { dec: 0, ds: '.', ts: ',', sym: 'تومان', pos: 'right_space' },
+    rounding: 'up1000'
+  };
+  var base = 1250000, regular = 1450000;
+  var box = document.getElementById('hzmp-box');
+  var plans = {
+    base: { pct: 0, label: 'فروشنده‌ی اصلی — پرداخت آنلاین', gw: 'zarinpal' },
+    p1:   { pct: 13, label: 'درگاه پرداخت اسنپ‌پی', gw: 'snapppay' },
+    p2:   { pct: 13, label: 'درگاه پرداخت ترب‌پی', gw: 'torobpay' }
+  };
+  var gateways = [
+    { id: 'zarinpal',  title: 'پرداخت آنلاین (زرین‌پال)' },
+    { id: 'snapppay',  title: 'درگاه پرداخت اسنپ‌پی' },
+    { id: 'torobpay',  title: 'درگاه پرداخت ترب‌پی' }
+  ];
+  var selected = 'base';
+
+  function roundIt(n, down) {
+    var step = D.rounding === 'up1000' ? 1000 : (D.rounding === 'up10000' ? 10000 : (D.rounding === 'up100' ? 100 : 0));
+    if (!step) { return n; }
+    if (down) { return Math.floor(n / step) * step; }
+    return Math.ceil(n / step) * step;
+  }
+  function withPct(v, pct) { return pct ? roundIt(v * (1 + pct / 100)) : v; }
+  function fa(n) { return String(n).replace(/[0-9]/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'[d]; }); }
+  function fmtNum(n) {
+    var s = String(Math.round(n)), out = '', c = 0;
+    for (var i = s.length - 1; i >= 0; i--) { out = s[i] + out; if (++c % 3 === 0 && i > 0) { out = D.fmt.ts + out; } }
+    return out;
+  }
+  function money(n) {
+    return '<span class="hzmp-money">' + fmtNum(n) + '</span> <span class="hzmp-cur">' + D.fmt.sym + '</span>';
+  }
+
+  // رنگ‌آمیزی قیمت‌ها دقیقاً مطابق منطق افزونه
+  function paint() {
+    var cards = box.querySelectorAll('.hzmp-card');
+    for (var i = 0; i < cards.length; i++) {
+      var card = cards[i], pct = parseFloat(card.getAttribute('data-pct')) || 0;
+      var price = withPct(base, pct), reg = withPct(regular, pct);
+      var now = card.querySelector('.hzmp-now');
+      now.innerHTML = money(price);
+      var was = card.querySelector('.hzmp-was');
+      was.innerHTML = money(reg);
+      var off = card.querySelector('.hzmp-off');
+      off.textContent = fmtNum(reg - price) + ' ' + D.fmt.sym + ' تخفیف';
+      var ins = card.querySelector('.hzmp-ins');
+      if (ins) {
+        var n = parseInt(card.getAttribute('data-installments') || '0', 10);
+        ins.innerHTML = n + ' قسط × ' + money(roundIt(price / n, true));
+      }
+      card.setAttribute('data-calc', price);
+    }
+    document.getElementById('main-price').textContent = fmtNum(base) + ' ' + D.fmt.sym;
+  }
+
+  function paintCart() {
+    var p = plans[selected], price = withPct(base, p.pct) * qty();
+    document.getElementById('cart-box').innerHTML =
+      '<div class="cart-line"><span>سبد پیک‌نیک ۶۰ پارچه هوم‌کت</span><span>' + qty() + ' عدد</span></div>' +
+      '<div class="cart-line"><span>پنل پرداخت</span><b>' + p.label + (p.pct ? ' (+' + fa(p.pct) + '٪)' : '') + '</b></div>' +
+      '<div class="cart-total"><span>مبلغ قابل پرداخت</span><span>' + money(price) + '</span></div>';
+
+    var allowed = [p.gw];
+    var html = '<div class="gw">';
+    for (var i = 0; i < gateways.length; i++) {
+      var g = gateways[i], on = allowed.indexOf(g.id) > -1;
+      html += '<label class="' + (on ? 'on' : 'lock') + '"><input type="radio" name="paydemo" ' + (on ? 'checked' : 'disabled') + '> ' + g.title +
+        '<small>' + (on ? 'مجاز برای این پنل' : 'قفل شده') + '</small></label>';
+    }
+    html += '</div>';
+    html += '<div class="' + (p.pct ? 'hintline' : 'okline') + '">' +
+      (p.pct
+        ? 'این قلم با قیمت پنل «' + p.label + '» (+' + fa(p.pct) + '٪) محاسبه شده است؛ به همین دلیل فقط درگاه همین پنل باز است تا کارمزد از فروشنده‌ی شما کسر نشود.'
+        : 'قیمت اصلی محصول پرداخت می‌شود؛ درگاه‌های اقساطی که درصد روی آن‌ها اعمال نشده بسته‌اند تا تخفیف ناخواسته ایجاد نشود.') +
+      '</div>';
+    document.getElementById('gw-box').innerHTML = html;
+  }
+
+  function qty() { var v = parseInt(document.getElementById('demo-qty').value, 10); return (v > 0 ? v : 1); }
+
+  function selectPlan(plan) {
+    selected = plan;
+    var cards = box.querySelectorAll('.hzmp-card');
+    for (var i = 0; i < cards.length; i++) {
+      cards[i].classList.toggle('is-selected', cards[i].getAttribute('data-plan') === plan);
+    }
+    paintCart();
+  }
+
+  box.addEventListener('click', function (e) {
+    var btn = e.target.closest('.hzmp-buy');
+    if (!btn) { return; }
+    e.preventDefault();
+    var form = btn.closest('form.hzmp-form');
+    selectPlan(form.getAttribute('data-plan'));
+    var ok = form.querySelector('.hzmp-ok');
+    ok.innerHTML = '✓ به سبد خرید اضافه شد — <a href="#">مشاهده‌ی سبد خرید</a>';
+    ok.hidden = false;
+    var others = box.querySelectorAll('.hzmp-ok');
+    for (var i = 0; i < others.length; i++) { if (others[i] !== ok) { others[i].hidden = true; } }
+  });
+
+  document.getElementById('demo-qty').addEventListener('change', paintCart);
+  paint();
+  paintCart();
+  selectPlan('base');
+})();
+</script>
+</body>
+</html>
