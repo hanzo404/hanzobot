@@ -66,6 +66,7 @@ final class Hanzobot_Payment_Panels {
 
 		// —— نمایش پنل‌ها روی صفحه‌ی محصول ———————————————————
 		add_action( 'wp', array( __CLASS__, 'register_render_hook' ) );
+		add_action( 'wp', array( __CLASS__, 'live_price_js' ) );
 		add_shortcode( 'hanzobot_panels', array( __CLASS__, 'shortcode_panels' ) );
 
 		// —— سبد خرید ———————————————————————————
@@ -634,6 +635,28 @@ final class Hanzobot_Payment_Panels {
 	 * نمایش روی صفحه‌ی محصول
 	 * ------------------------------------------------------------------ */
 
+	/**
+	 * قیمت‌های پنل‌ها با انتخاب متغیر به‌صورت زنده در فرم ووکامرس به‌روز می‌شوند
+	 * (مستقل از اینکه جعبه با کدام هوک نمایش داده شود).
+	 */
+	public static function live_price_js() {
+
+		if ( ! is_product() ) {
+			return;
+		}
+		if ( empty( self::settings()['general']['enabled'] ) ) {
+			return;
+		}
+
+		add_action(
+			'wp_footer',
+			function () {
+				echo "<script id=\"hzmp-live-prices\">\n" . self::live_js() . "\n</script>\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+			},
+			98
+		);
+	}
+
 	public static function register_render_hook() {
 
 		if ( ! is_product() ) {
@@ -655,6 +678,75 @@ final class Hanzobot_Payment_Panels {
 			default:
 				add_action( 'woocommerce_after_add_to_cart_form', array( __CLASS__, 'render_box' ) );
 		}
+	}
+
+	/**
+	 * جاوااسکریپت وزن‌کشی زنده‌ی قیمت‌ها روی فرم متغیر ووکامرس (بدون نیاز به جعبه‌ی پنل‌ها).
+	 *
+	 * @return string
+	 */
+	private static function live_js() {
+
+		$data = wp_json_encode( self::js_data(), JSON_UNESCAPED_UNICODE );
+
+		return <<<JS
+(function () {
+	if (!window.jQuery || window.hzmpLive) { return; }
+	window.hzmpLive = true;
+	var D = {$data};
+	var box = document.getElementById('hzmp-box');
+	if (!box || box.getAttribute('data-variable') !== '1') { return; }
+	var jq = window.jQuery;
+
+	function roundIt(n, down) {
+		var step = D.rounding === 'up1000' ? 1000 : (D.rounding === 'up10000' ? 10000 : (D.rounding === 'up100' ? 100 : 0));
+		if (!step) { var f = Math.pow(10, D.fmt.dec); return Math.round(n * f) / f; }
+		var v = Math.round(n * 100) / 100;
+		if (down) { return (v >= 0) ? Math.floor(v / step) * step : Math.ceil(v / step) * step; }
+		return (v >= 0) ? Math.ceil(v / step) * step : Math.floor(v / step) * step;
+	}
+	function withPct(base, pct) { return pct ? roundIt(base * (1 + pct / 100)) : base; }
+	function fmtNum(n) {
+		var s = (Math.abs(n) < 0.00001 ? 0 : n).toFixed(D.fmt.dec), p = s.split('.');
+		var i = p[0].replace(/\\B(?=(\\d{3})+(?!\\d))/g, function () { return D.fmt.ts; });
+		return i + (p[1] ? D.fmt.ds + p[1] : '');
+	}
+	function money(n) {
+		var num = '<span class="hzmp-money">' + fmtNum(n) + '</span>';
+		var cur = '<span class="hzmp-cur">' + D.fmt.sym + '</span>';
+		return (D.fmt.pos.indexOf('left') === 0) ? cur + ' ' + num : num + ' ' + cur;
+	}
+	function paint(base, regular) {
+		base = parseFloat(base) || 0;
+		regular = parseFloat(regular) || 0;
+		var cards = box.querySelectorAll('.hzmp-card');
+		for (var i = 0; i < cards.length; i++) {
+			var card = cards[i], pct = parseFloat(card.getAttribute('data-pct')) || 0;
+			var price = withPct(base, pct), reg = regular ? withPct(regular, pct) : 0;
+			card.setAttribute('data-price', price);
+			var now = card.querySelector('.hzmp-now');
+			if (now) { now.innerHTML = '<span class="hzmp-from">از</span> ' + money(price); }
+			var was = card.querySelector('.hzmp-was');
+			if (was && reg > price) { was.innerHTML = money(reg); }
+			var off = card.querySelector('.hzmp-off');
+			if (off && reg > price) { off.textContent = fmtNum(reg - price) + ' ' + D.fmt.sym + ' تخفیف'; }
+			var ins = card.querySelector('.hzmp-ins');
+			if (ins) {
+				var n = parseInt(card.getAttribute('data-installments') || '0', 10);
+				if (n > 1) { ins.innerHTML = n + ' قسط × ' + money(roundIt(price / n, true)); }
+			}
+		}
+		box.setAttribute('data-base-price', base);
+	}
+	jq(document.body).on('found_variation', function (e, v) {
+		if (!v) { return; }
+		paint(v.display_price, v.display_regular_price);
+	});
+	jq(document.body).on('reset_data', function () {
+		paint(box.getAttribute('data-base-price'), box.getAttribute('data-base-regular'));
+	});
+})();
+JS;
 	}
 
 	/**
