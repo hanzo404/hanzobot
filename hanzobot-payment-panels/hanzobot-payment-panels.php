@@ -85,6 +85,7 @@ final class Hanzobot_Payment_Panels {
 		// —— پیشخوان ———————————————————————————
 		add_action( 'admin_menu', array( __CLASS__, 'admin_menu' ) );
 		add_action( 'admin_init', array( __CLASS__, 'register_settings' ) );
+		add_action( 'admin_head', array( __CLASS__, 'admin_css' ) );
 		add_action( 'add_meta_boxes', array( __CLASS__, 'add_meta_box' ) );
 		add_action( 'save_post_product', array( __CLASS__, 'save_meta_box' ), 10, 2 );
 		add_filter( 'plugin_action_links_' . plugin_basename( __FILE__ ), array( __CLASS__, 'action_links' ) );
@@ -1826,6 +1827,25 @@ JS;
 	}
 
 	/**
+	 * استایل کوچک صفحه‌ی تنظیمات.
+	 */
+	public static function admin_css() {
+
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		if ( ! $screen || false === strpos( (string) $screen->id, 'hzmp-settings' ) ) {
+			return;
+		}
+
+		echo '<style>
+			.hzmp-wrap .hzmp-h2{margin:26px 0 8px;padding-top:16px;border-top:1px solid #e2e4e7;font-size:15px}
+			.hzmp-status{background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:4px 16px 10px;margin:14px 0;max-width:900px}
+			.hzmp-status__list{margin:8px 0;padding-inline-start:20px;line-height:2}
+			.hzmp-help{background:#fff;border:1px solid #dcdcde;border-radius:8px;padding:4px 16px 10px;margin-top:22px;max-width:900px}
+			.hzmp-help ol{line-height:2}
+		</style>';
+	}
+
+	/**
 	 * پاک‌سازی ورودی تنظیمات بر اساس نوع مقدار پیش‌فرض.
 	 *
 	 * @param mixed $input ورودی.
@@ -2328,6 +2348,35 @@ JS;
 		}
 
 		echo '<p class="description">درصدها می‌توانند منفی باشند (تخفیف).</p>';
+
+		// پیش‌نمایش قیمت‌ها بر اساس مقادیر ذخیره‌شده‌ی همین محصول.
+		$product = function_exists( 'wc_get_product' ) ? wc_get_product( $post->ID ) : null;
+		if ( ! $product instanceof WC_Product || ! empty( $ov['disabled'] ) ) {
+			return;
+		}
+
+		$base = $product->is_type( 'variable' )
+			? (float) $product->get_variation_price( 'min', true )
+			: (float) wc_get_price_to_display( $product );
+
+		echo '<hr><p><b>پیش‌نمایش قیمت پنل‌ها</b><br><span class="description">بر اساس قیمت فعلی محصول و مقادیر ذخیره‌شده</span></p><ul style="margin:6px 0;padding-inline-start:18px;line-height:2">';
+
+		foreach ( array_merge( array( 'base' ), array_keys( self::slots() ) ) as $id ) {
+			if ( ! self::plan_enabled( $id ) ) {
+				continue;
+			}
+			$pct   = self::plan_pct( $id, $post->ID );
+			$price = self::price_with_pct( $base, $pct );
+
+			printf(
+				'<li>%s: <b>%s</b> %s</li>',
+				esc_html( self::plan_label( $id ) ),
+				esc_html( self::format_number( $price ) ),
+				esc_html( get_woocommerce_currency_symbol() . ( 0.0 !== $pct ? ' (' . self::pct_label( $pct ) . ')' : '' ) )
+			);
+		}
+
+		echo '</ul>';
 	}
 
 	/**
