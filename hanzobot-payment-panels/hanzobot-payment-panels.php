@@ -3,12 +3,11 @@
  * Plugin Name:       Hanzobot: Payment Panels (Multi-Seller Prices)
  * Plugin URI:        https://yenolife.com/
  * Description:       نمایش چند «فروشنده/پنل» با قیمت‌های متفاوت روی صفحه‌ی محصول؛ قیمت هر پنل بر اساس درگاه پرداخت (مثل اسنپ‌پی و ترب‌پی) با درصد افزایش یا تخفیف دلخواه محاسبه می‌شود، درگاه پرداخت در تسویه‌حساب متناسب با پنل انتخابی قفل می‌شود و پنل انتخابی در سبد، سفارش و ایمیل‌ها ثبت می‌گردد.
- * Version:           1.0.0
+ * Version:           1.0.1
  * Author:            Hanzobot
  * License:           GPL-2.0-or-later
  * Requires at least: 5.8
  * Requires PHP:      7.0
- * Requires Plugins:  woocommerce
  * Text Domain:       hanzobot-payment-panels
  * WC requires at least: 5.0
  * WC tested up to:   9.9
@@ -22,7 +21,7 @@ final class Hanzobot_Payment_Panels {
 	 * ثابت‌ها
 	 * ------------------------------------------------------------------ */
 
-	const VER          = '1.0.0';
+	const VER          = '1.0.1';
 	const OPT          = 'hzmp_settings';
 	const META_PRODUCT = '_hzmp_product';
 	const PLAN_ARG     = 'hanzobot_plan';
