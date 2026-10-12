@@ -202,6 +202,9 @@ final class Hanzobot_Payment_Panels {
 			'general' => array(
 				'enabled'           => 1,
 				'position'          => 'after_cart',
+				'custom_hook'       => '',
+				'custom_hook_priority' => 25,
+				'debug_hooks'       => 0,
 				'box_title'         => 'همه فروشندگان (۳)',
 				'box_sub'           => 'قیمت نهایی به روش پرداخت انتخابی شما بستگی دارد.',
 				'box_note'          => 'مبالغ اقساطی تقریبی است؛ شرایط نهایی در صفحه‌ی درگاه مشخص می‌شود.',
@@ -663,7 +666,8 @@ final class Hanzobot_Payment_Panels {
 			return;
 		}
 
-		$pos = self::settings()['general']['position'];
+		$s   = self::settings();
+		$pos = $s['general']['position'];
 
 		switch ( $pos ) {
 			case 'before_cart':
@@ -675,9 +679,81 @@ final class Hanzobot_Payment_Panels {
 			case 'after_summary':
 				add_action( 'woocommerce_after_single_product_summary', array( __CLASS__, 'render_box' ), 12 );
 				break;
+			case 'manual':
+				// فقط با شورت‌کد [hanzobot_panels] یا تابع hzmp_panels() نمایش داده می‌شود.
+				break;
+			case 'custom_hook':
+				$hook = self::sanitize_hook_name( $s['general']['custom_hook'] );
+				if ( '' !== $hook ) {
+					add_action( $hook, array( __CLASS__, 'render_box' ), (int) $s['general']['custom_hook_priority'] );
+				}
+				break;
 			default:
 				add_action( 'woocommerce_after_add_to_cart_form', array( __CLASS__, 'render_box' ) );
 		}
+
+		if ( ! empty( $s['general']['debug_hooks'] ) && current_user_can( 'manage_woocommerce' ) ) {
+			self::start_hook_log();
+		}
+	}
+
+	/**
+	 * نام هوک را به شکل امن در می‌آورد.
+	 *
+	 * @param string $hook نام هوک.
+	 * @return string
+	 */
+	public static function sanitize_hook_name( $hook ) {
+		return (string) preg_replace( '/[^a-zA-Z0-9_\-]/', '', (string) $hook );
+	}
+
+	/* ---------------------------------------------------------------------
+	 * ابزار عیب‌یابی: فهرست هوک‌های همین قالب روی صفحه‌ی محصول
+	 * ------------------------------------------------------------------ */
+
+	/** @var array نام هوک‌هایی که در همین درخواست اجرا شده‌اند. */
+	private static $hook_log = array();
+
+	/**
+	 * ثبت هوک‌های اجراشده (فقط برای مدیر و فقط وقتی گزینه‌اش روشن است).
+	 */
+	public static function start_hook_log() {
+
+		add_action(
+			'all',
+			function () {
+				$tag = current_filter();
+				if ( ! $tag || in_array( $tag, self::$hook_log, true ) ) {
+					return;
+				}
+				// فقط هوک‌های مرتبط با محصول/قالب تا فهرست قابل استفاده بماند.
+				if ( preg_match( '/^(woocommerce|wc|woodmart|shop|product|storefront|astra|kadence|flatsome|betheme|ocean|generate|neve|blocksy|botiga|single|theme)/i', $tag ) || false !== strpos( $tag, 'product' ) ) {
+					self::$hook_log[] = $tag;
+				}
+			}
+		);
+
+		add_action( 'wp_footer', array( __CLASS__, 'print_hook_log' ), 1000 );
+	}
+
+	/**
+	 * نمایش فهرست هوک‌ها (فقط برای مدیر، پایین صفحه‌ی محصول).
+	 */
+	public static function print_hook_log() {
+
+		if ( ! self::$hook_log ) {
+			return;
+		}
+
+		echo '<div style="direction:rtl;text-align:right;font-family:Tahoma,sans-serif;background:#fffbe6;border:1px solid #e6c200;border-radius:10px;padding:12px 16px;margin:18px auto;max-width:1100px">';
+		echo '<b>هانزبات — ابزار انتخاب محل نمایش پنل‌ها (فقط برای مدیر)</b><br>';
+		echo '<span style="font-size:12px;color:#6b7684">یکی از نام‌های زیر را در تنظیمات افزونه ← «محل نمایش» ← «هوک دلخواه» بگذارید. فهرست به ترتیب اجرا روی صفحه‌ی محصول است.</span>';
+		echo '<details style="margin-top:8px"><summary style="cursor:pointer;font-size:13px">نمایش فهرست هوک‌ها (' . esc_html( number_format_i18n( count( self::$hook_log ) ) ) . ' مورد)</summary>';
+		echo '<div style="margin-top:8px;font-size:12px;line-height:2;direction:ltr;text-align:left;max-height:280px;overflow:auto">';
+		foreach ( self::$hook_log as $tag ) {
+			echo '<code style="display:inline-block;margin:2px 0">' . esc_html( $tag ) . '</code><br>';
+		}
+		echo '</div></details></div>';
 	}
 
 	/**
@@ -776,6 +852,9 @@ JS;
 		if ( empty( $s['general']['enabled'] ) ) {
 			return;
 		}
+
+		// بعضی هوک‌ها آرگومان غیرعددی می‌فرستند (مثل the_content)؛ نادیده بگیر.
+		$product_id = is_numeric( $product_id ) ? absint( $product_id ) : 0;
 
 		if ( ! $product_id ) {
 			global $product;
@@ -2000,7 +2079,7 @@ JS;
 	 */
 	private static function checkbox_keys() {
 
-		return array( 'enabled', 'hide_theme_button', 'ajax_add', 'lock_gateway', 'hide_unavailable', 'cookie', 'show_cart_note' );
+		return array( 'enabled', 'hide_theme_button', 'ajax_add', 'lock_gateway', 'hide_unavailable', 'cookie', 'show_cart_note', 'debug_hooks' );
 	}
 
 	/**
@@ -2067,7 +2146,14 @@ JS;
 					$out[ $key ] = $hex ? $hex : '#8a94a6';
 					break;
 				case 'position':
-					$out[ $key ] = in_array( $str, array( 'after_cart', 'before_cart', 'summary_31', 'after_summary' ), true ) ? $str : 'after_cart';
+					$out[ $key ] = in_array( $str, array( 'after_cart', 'before_cart', 'summary_31', 'after_summary', 'custom_hook', 'manual' ), true ) ? $str : 'after_cart';
+					break;
+				case 'custom_hook':
+					$out[ $key ] = self::sanitize_hook_name( $str );
+					break;
+				case 'custom_hook_priority':
+					$prio        = (int) $str;
+					$out[ $key ] = ( $prio >= 1 && $prio <= 999 ) ? $prio : 25;
 					break;
 				case 'rounding':
 					$out[ $key ] = in_array( $str, array( 'none', 'up1000', 'up10000', 'up100' ), true ) ? $str : 'up1000';
@@ -2128,13 +2214,24 @@ JS;
 									'before_cart'   => 'قبل از دکمه‌ی افزودن به سبد',
 									'summary_31'    => 'بعد از قیمت محصول (اولویت ۳۱)',
 									'after_summary' => 'پایین صفحه‌ی محصول',
+									'custom_hook'   => 'هوک دلخواه قالب (نام هوک را پایین بنویسید)',
+									'manual'        => 'دستی — فقط با شورت‌کد یا کد PHP',
 								);
 								foreach ( $positions as $k => $v ) {
 									echo '<option value="' . esc_attr( $k ) . '" ' . selected( $s['general']['position'], $k, false ) . '>' . esc_html( $v ) . '</option>';
 								}
 								?>
 							</select>
-							<p class="description">اگر باکس خرید قالب شما ساختار خاصی دارد، می‌توانید با شورت‌کد <code>[hanzobot_panels id="شناسه‌ی محصول"]</code> آن را دقیقاً هر جا که می‌خواهید بگذارید.</p>
+							<p class="description">اگر باکس خرید قالب شما ساختار خاصی دارد، می‌توانید با شورت‌کد <code>[hanzobot_panels id="شناسه‌ی محصول"]</code> آن را دقیقاً هر جا که می‌خواهید بگذارید (المنتور، گوتنبرگ، HTML Block وودمارت).</p>
+							<p>
+								نام هوک دلخواه: <input type="text" class="regular-text" style="direction:ltr" name="hzmp_settings[general][custom_hook]" value="<?php echo esc_attr( $s['general']['custom_hook'] ); ?>" placeholder="woocommerce_single_product_summary">
+								اولویت: <input type="number" min="1" max="999" style="width:80px" name="hzmp_settings[general][custom_hook_priority]" value="<?php echo esc_attr( $s['general']['custom_hook_priority'] ); ?>">
+							</p>
+							<p class="description">
+								نمونه‌ها: <code>woocommerce_single_product_summary</code> با اولویت ۱۵ (بالای قیمت) یا ۲۵ (زیر قیمت) — <code>woocommerce_product_meta_start</code> — <code>woocommerce_after_single_product_summary</code> — <code>woocommerce_share</code>.
+							</p>
+							<label><input type="checkbox" name="hzmp_settings[general][debug_hooks]" value="1" <?php checked( ! empty( $s['general']['debug_hooks'] ) ); ?>> راهنمای هوک‌ها: فهرست هوک‌های همین قالب را پایین صفحه‌ی محصول (فقط برای مدیر) نشان بده</label>
+							<p class="description">این گزینه را روشن کن، صفحه‌ی یک محصول را باز کن و همان فهرست را ببین؛ اسم هر هوکی که پسندیدی را در فیلد بالا بگذار. بعد از تنظیم، تیک را بردار.</p>
 						</td>
 					</tr>
 					<tr>
@@ -2565,6 +2662,35 @@ function hzmp_get_cards( $product_id = 0 ) {
 	$product = $product_id ? wc_get_product( $product_id ) : ( isset( $GLOBALS['product'] ) ? $GLOBALS['product'] : null );
 
 	return $product ? Hanzobot_Payment_Panels::cards( $product ) : array();
+}
+
+/**
+ * چاپ جعبه‌ی پنل‌ها هر جایی از قالب/افزونه.
+ *
+ * نمونه‌ها:
+ *   add_action( 'woocommerce_single_product_summary', 'hzmp_panels', 25 );
+ *   add_action( 'woocommerce_product_meta_start', 'hzmp_panels' );
+ * و در فایل قالب:  <?php hzmp_panels(); ?>
+ *
+ * @param int $product_id شناسه‌ی محصول (۰ = محصول جاری).
+ */
+function hzmp_panels( $product_id = 0 ) {
+
+	Hanzobot_Payment_Panels::render_box( $product_id );
+}
+
+/**
+ * HTML جعبه‌ی پنل‌ها به‌صورت رشته (برای قرار دادن در متغیر یا ویجت).
+ *
+ * @param int $product_id شناسه‌ی محصول.
+ * @return string
+ */
+function hzmp_panels_html( $product_id = 0 ) {
+
+	ob_start();
+	Hanzobot_Payment_Panels::render_box( $product_id );
+
+	return (string) ob_get_clean();
 }
 
 /**

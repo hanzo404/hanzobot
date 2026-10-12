@@ -80,6 +80,8 @@ code{background:#eef1f5;border-radius:6px;padding:1px 5px;font-family:inherit;di
 .hzmp-card__note{font-size:11px;color:var(--hzmp-muted);margin-top:8px;}
 .hzmp-note{font-size:11px;color:var(--hzmp-muted);margin-top:10px;line-height:1.9;}
 .hzmp-hint{margin-top:10px;font-size:12px;color:#b3261e;background:#fdeaea;border-radius:8px;padding:8px 10px;}
+.hzmp-slot:empty{display:none}
+.hzmp-slot:not(:empty){margin:14px 0}
 .hzmp-cart-note{margin:0 0 14px;padding:10px 12px;border:1px solid var(--hzmp-line,#e6e6e6);border-radius:10px;font-size:13px;background:#f8fbff;direction:rtl;text-align:right;}
 .hzmp-cart-note b{font-weight:700;}
 .hzmp-box.is-busy{opacity:.65;pointer-events:none;}
@@ -97,12 +99,26 @@ code{background:#eef1f5;border-radius:6px;padding:1px 5px;font-family:inherit;di
 
   <div class="grid">
     <main>
+      <div class="panel" style="margin-bottom:18px">
+        <div class="qty" style="flex-wrap:wrap">
+          <span>محل نمایش پنل‌ها روی صفحه:</span>
+          <select id="demo-pos">
+            <option value="slot-after-price">زیر قیمت محصول</option>
+            <option value="slot-after-media">زیر تصویر (ستون کنار)</option>
+            <option value="slot-before-tabs" selected>پایین صفحه، قبل از تب‌ها</option>
+            <option value="slot-manual">دستی (جای خودم می‌گذارم)</option>
+          </select>
+        </div>
+        <p class="pdp__meta" style="margin-top:6px">این همان کاری است که در تنظیمات افزونه با «هوک دلخواه» یا «دستی» + شورت‌کد انجام می‌شود؛ در وردپرس لازم نیست کد بزنی: اسم هوک قالب خودت را در تنظیمات می‌گذاری.</p>
+      </div>
+
       <div class="panel pdp">
         <div class="pdp__media">🧺</div>
         <div class="pdp__body">
           <h2 class="pdp__title">سبد پیک‌نیک ۶۰ پارچه هوم‌کت <span class="tag">موجود</span></h2>
           <p class="pdp__meta">برند: هوم‌کت • کد کالا: ۱۰۰۱ • ارسال از انبار تهران</p>
           <div class="pdp__price">قیمت پایه (قیمت اصلی محصول): <b id="main-price">۱٬۲۵۰٬۰۰۰ تومان</b></div>
+          <div class="hzmp-slot" id="slot-after-price"></div>
           <div class="qty">
             <span>رنگ:</span>
             <select id="demo-variation">
@@ -115,6 +131,7 @@ code{background:#eef1f5;border-radius:6px;padding:1px 5px;font-family:inherit;di
           <p class="pdp__meta" style="margin-top:6px">انتخاب رنگ را عوض کن: قیمت هر سه پنل و مبلغ اقساط زنده به‌روز می‌شود (همان رفتار محصول متغیر در ووکامرس).</p>
         </div>
       </div>
+      <div class="hzmp-slot" id="slot-after-media"></div>
 
       <!-- ============ همان خروجی افزونه ============ -->
       <div class="hzmp-box" id="hzmp-box" dir="rtl" data-product="1001" data-variable="0" data-purchasable="1"
@@ -223,6 +240,9 @@ code{background:#eef1f5;border-radius:6px;padding:1px 5px;font-family:inherit;di
         <div class="hzmp-note">مبالغ اقساطی تقریبی است؛ شرایط نهایی در صفحه‌ی درگاه مشخص می‌شود.</div>
       </div>
       <!-- ============ پایان خروجی افزونه ============ -->
+      <div class="hzmp-slot" id="slot-before-tabs"></div>
+      <div class="panel" style="font-size:13px;color:var(--muted)">— تب‌های توضیحات / نظرات / مشخصات (شبیه‌سازی) —</div>
+      <div class="hzmp-slot" id="slot-manual">هر جایی که بخواهی: با شورت‌کد <code>[hanzobot_panels]</code> یا تابع <code>hzmp_panels()</code> در قالب.</div>
     </main>
 
     <aside class="panel">
@@ -342,6 +362,12 @@ code{background:#eef1f5;border-radius:6px;padding:1px 5px;font-family:inherit;di
   });
 
   document.getElementById('demo-qty').addEventListener('change', paintCart);
+
+  // معادل «محل نمایش» افزونه: جعبه بین اسلات‌ها جابه‌جا می‌شود (در وردپرس این کار با هوک/شورت‌کد انجام می‌شود).
+  document.getElementById('demo-pos').addEventListener('change', function () {
+    var slot = document.getElementById(this.value);
+    if (slot && box.parentNode !== slot) { slot.appendChild(box); }
+  });
 
   // شبیه‌سازی رویداد found_variation ووکامرس: با تغییر رنگ، قیمت هر پنل زنده عوض می‌شود.
   document.getElementById('demo-variation').addEventListener('change', function () {
