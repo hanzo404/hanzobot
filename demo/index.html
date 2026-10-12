@@ -23,6 +23,7 @@ h1.title{font-size:20px;margin:0 0 6px}
 .pdp__price b{font-size:18px}
 .qty{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px}
 .qty input{width:70px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;text-align:center;font-family:inherit}
+.qty select{padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-family:inherit;background:#fff}
 .tag{display:inline-block;font-size:11px;color:#0f7b52;background:#e6f7ef;border-radius:999px;padding:2px 8px;margin-inline-start:6px}
 aside h3{margin:0 0 10px;font-size:15px}
 .cart-line{display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:8px 0;border-bottom:1px dashed var(--line)}
@@ -102,7 +103,16 @@ code{background:#eef1f5;border-radius:6px;padding:1px 5px;font-family:inherit;di
           <h2 class="pdp__title">سبد پیک‌نیک ۶۰ پارچه هوم‌کت <span class="tag">موجود</span></h2>
           <p class="pdp__meta">برند: هوم‌کت • کد کالا: ۱۰۰۱ • ارسال از انبار تهران</p>
           <div class="pdp__price">قیمت پایه (قیمت اصلی محصول): <b id="main-price">۱٬۲۵۰٬۰۰۰ تومان</b></div>
-          <div class="qty"><span>تعداد:</span><input id="demo-qty" type="number" min="1" value="1"></div>
+          <div class="qty">
+            <span>رنگ:</span>
+            <select id="demo-variation">
+              <option value="1250000|1450000|وانیلی" selected>وانیلی — ۱٬۲۵۰٬۰۰۰</option>
+              <option value="1310000|1510000|طوسی">طوسی — ۱٬۳۱۰٬۰۰۰</option>
+              <option value="1295000|1475000|موکا">موکا — ۱٬۲۹۵٬۰۰۰</option>
+            </select>
+            <span>تعداد:</span><input id="demo-qty" type="number" min="1" value="1">
+          </div>
+          <p class="pdp__meta" style="margin-top:6px">انتخاب رنگ را عوض کن: قیمت هر سه پنل و مبلغ اقساط زنده به‌روز می‌شود (همان رفتار محصول متغیر در ووکامرس).</p>
         </div>
       </div>
 
@@ -231,6 +241,7 @@ code{background:#eef1f5;border-radius:6px;padding:1px 5px;font-family:inherit;di
     rounding: 'up1000'
   };
   var base = 1250000, regular = 1450000;
+  var variant = 'وانیلی';
   var box = document.getElementById('hzmp-box');
   var plans = {
     base: { pct: 0, label: 'فروشنده‌ی اصلی — پرداخت آنلاین', gw: 'zarinpal' },
@@ -286,7 +297,7 @@ code{background:#eef1f5;border-radius:6px;padding:1px 5px;font-family:inherit;di
   function paintCart() {
     var p = plans[selected], price = withPct(base, p.pct) * qty();
     document.getElementById('cart-box').innerHTML =
-      '<div class="cart-line"><span>سبد پیک‌نیک ۶۰ پارچه هوم‌کت</span><span>' + qty() + ' عدد</span></div>' +
+      '<div class="cart-line"><span>سبد پیک‌نیک ۶۰ پارچه هوم‌کت (' + variant + ')</span><span>' + qty() + ' عدد</span></div>' +
       '<div class="cart-line"><span>پنل پرداخت</span><b>' + p.label + (p.pct ? ' (+' + fa(p.pct) + '٪)' : '') + '</b></div>' +
       '<div class="cart-total"><span>مبلغ قابل پرداخت</span><span>' + money(price) + '</span></div>';
 
@@ -331,6 +342,19 @@ code{background:#eef1f5;border-radius:6px;padding:1px 5px;font-family:inherit;di
   });
 
   document.getElementById('demo-qty').addEventListener('change', paintCart);
+
+  // شبیه‌سازی رویداد found_variation ووکامرس: با تغییر رنگ، قیمت هر پنل زنده عوض می‌شود.
+  document.getElementById('demo-variation').addEventListener('change', function () {
+    var parts = this.value.split('|');
+    base = parseInt(parts[0], 10);
+    regular = parseInt(parts[1], 10);
+    variant = parts[2];
+    box.setAttribute('data-base-price', base);
+    paint();
+    paintCart();
+    var ok = document.querySelector('.hzmp-ok:not([hidden])');
+    if (ok) { ok.hidden = true; }
+  });
   paint();
   paintCart();
   selectPlan('base');
