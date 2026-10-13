@@ -37,7 +37,7 @@ defined( 'ABSPATH' ) || exit;
 final class Hanzobot_Speed_Doctor {
 
 	/** نسخه‌ی افزونه. */
-	const VER = '1.0.0';
+	const VER = '1.2.0';
 
 	/** کلید تنظیمات. */
 	const OPT = 'hbot_sd_options';
@@ -144,6 +144,7 @@ final class Hanzobot_Speed_Doctor {
 		'profile'           => 1,
 		'force_https'       => 1,
 		'assets_audit'      => 1,
+		'strip_inline_scripts' => 1,
 	);
 
 	/* ---------------------------------------------------------------------
@@ -189,6 +190,93 @@ final class Hanzobot_Speed_Doctor {
 			add_filter( 'style_loader_src', array( __CLASS__, 'filter_style_src' ), 20, 2 );
 			add_filter( 'script_loader_src', array( __CLASS__, 'filter_script_src' ), 20, 2 );
 		}
+
+		if ( self::opt( 'strip_inline_scripts' ) ) {
+			// قبل از چاپ اسکریپت‌های هدر (priority 9) و فوتر (priority 20).
+			add_action( 'wp_head', array( __CLASS__, 'sanitize_inline_scripts' ), 8 );
+			add_action( 'wp_footer', array( __CLASS__, 'sanitize_inline_scripts' ), 19 );
+		}
+	}
+
+	/**
+	 * تگ‌های <script> اضافه‌ای که قالب/افزونه داخل اسکریپت inline گذاشته را حذف می‌کند.
+	 *
+	 * چرا لازم است: wp_add_inline_script() خروجی را خودش داخل <script> می‌گذارد؛ اگر
+	 * کد ورودی هم با <script>...</script> احاطه شده باشد، HTML خروجی نامعتبر می‌شود و
+	 * (مهم‌تر) موتور جاوااسکریپت از اولین کاراکتر «<» خطای Syntax می‌دهد و کل بلوک اجرا نمی‌شود.
+	 *
+	 * @return void
+	 */
+	public static function sanitize_inline_scripts() {
+		if ( ! function_exists( 'wp_scripts' ) ) {
+			return;
+		}
+
+		$scripts = wp_scripts();
+
+		if ( ! is_object( $scripts ) || empty( $scripts->registered ) ) {
+			return;
+		}
+
+		foreach ( $scripts->registered as $dep ) {
+			if ( empty( $dep->extra ) || ! is_array( $dep->extra ) ) {
+				continue;
+			}
+
+			foreach ( array( 'before', 'after', 'data' ) as $key ) {
+				if ( empty( $dep->extra[ $key ] ) ) {
+					continue;
+				}
+
+				if ( is_array( $dep->extra[ $key ] ) ) {
+					foreach ( $dep->extra[ $key ] as $i => $code ) {
+						$new = self::strip_script_wrapper( $code );
+
+						if ( $new !== $code ) {
+							$dep->extra[ $key ][ $i ] = $new;
+							self::bump( 'inline_script_stripped' );
+						}
+					}
+				} else {
+					$new = self::strip_script_wrapper( $dep->extra[ $key ] );
+
+					if ( $new !== $dep->extra[ $key ] ) {
+						$dep->extra[ $key ] = $new;
+						self::bump( 'inline_script_stripped' );
+					}
+				}
+			}
+		}
+	}
+
+	/**
+	 * اگر کل کد داخل یک جفت <script>...</script> باشد، فقط محتوای داخل را برمی‌گرداند.
+	 * کدهای چندبلوکی یا مشکوک دست‌نخورده می‌مانند.
+	 *
+	 * @param mixed $code کد.
+	 * @return mixed
+	 */
+	private static function strip_script_wrapper( $code ) {
+		if ( ! is_string( $code ) || '' === $code ) {
+			return $code;
+		}
+
+		$trimmed = trim( $code );
+
+		if ( 0 !== strpos( $trimmed, '<script' ) ) {
+			return $code;
+		}
+
+		if ( ! preg_match( '#^<script\b[^>]*>(.*)</script>$#is', $trimmed, $m ) ) {
+			return $code;
+		}
+
+		// اگر داخل آن تگ اسکریپت دیگری باشد، ساختار را دست نمی‌زنیم.
+		if ( preg_match( '#<script\b#i', $m[1] ) ) {
+			return $code;
+		}
+
+		return trim( $m[1] );
 	}
 
 	/**
@@ -973,6 +1061,7 @@ final class Hanzobot_Speed_Doctor {
 				'profile'          => isset( $_POST['profile'] ) ? 1 : 0,
 				'force_https'      => isset( $_POST['force_https'] ) ? 1 : 0,
 				'assets_audit'     => isset( $_POST['assets_audit'] ) ? 1 : 0,
+				'strip_inline_scripts' => isset( $_POST['strip_inline_scripts'] ) ? 1 : 0,
 			);
 
 			update_option( self::OPT, $options );
@@ -1234,6 +1323,11 @@ final class Hanzobot_Speed_Doctor {
 						<p class="description">تعداد و حجم فایل‌های صف‌شده را در هر درخواست می‌شمارد و در بخش ۶ نشان می‌دهد (کمک می‌کند بفهمید کدام قالب/افزونه بیشترین CSS را می‌آورد).</p></td>
 					</tr>
 					<tr>
+						<th scope="row">اصلاح اسکریپت‌های inline ناسالم</th>
+						<td><label><input type="checkbox" name="strip_inline_scripts" value="1" <?php checked( self::opt( 'strip_inline_scripts' ) ); ?>> فعال</label>
+						<p class="description">اگر قالب/افزونه‌ای داخل <code>wp_add_inline_script()</code> تگ <code>&lt;script&gt;</code> گذاشته باشد (مثل قالب Woodmart؛ هشدار «wp_add_inline_script was called incorrectly»)، تگ‌های اضافه حذف می‌شوند تا HTML خروجی معتبر و جاوااسکریپت داخلش واقعاً اجرا شود. توجه: هشدار خودِ وردپرس (که هنگام صدا زدن تابع تولید می‌شود) باقی می‌ماند؛ این گزینه فقط خروجی نهایی را سالم می‌کند.</p></td>
+					</tr>
+					<tr>
 						<th scope="row">جلوگیری از نوشتن کش المنتور در postmeta</th>
 						<td><label><input type="checkbox" name="block_elem_cache" value="1" <?php checked( self::opt( 'block_elem_cache' ) ); ?>> فعال (پیشرفته)</label>
 						<p class="description" style="color:#b32d2e">فقط اگر در بخش «آخرین درخواست» دیدید که <code>_elementor_element_cache</code> در هر بازدید صدها کیلوبایت می‌نویسد و صفحات هنوز درست نمایش داده می‌شوند. مقدار در همان درخواست از کش خوانده می‌شود، ولی در دیتابیس ذخیره نمی‌شود.</p></td>
@@ -1315,6 +1409,8 @@ final class Hanzobot_Speed_Doctor {
 							'rewrite_repaired'   => 'بارهای تعمیر ردیف rewrite_rules',
 							'probe_added'        => 'نام آپشن تازه یادگرفته‌شده',
 							'elem_cache_blocked' => 'نوشتن‌های کش المنتور که متوقف شد',
+							'https_upgraded'     => 'فایل http که به https ارتقا یافت',
+							'inline_script_stripped' => 'اسکریپت inline که تگ <script> اضافه‌اش حذف شد',
 						);
 						foreach ( $stats['cum'] as $key => $value ) :
 							?>

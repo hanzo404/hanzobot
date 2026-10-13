@@ -308,6 +308,95 @@ elementor-gf-local-robotoslab →  http://yenolife.com/wp-content/uploads/elemen
 
 ---
 
+## ۷) هشدارهای PHP (گزارش سوم)
+
+سه دسته هشدار در گزارش شما هست: یکی «دیپرکیشن» پیاچپی، یکی خطای منطقی در درگاه پرداخت، و یکی خطای استفاده‌ی نادرست از تابع وردپرس در قالب. هیچ‌کدام سایت را «خاموش» نمی‌کنند، ولی هر سه مهم‌اند.
+
+### ۷.۱) `Creation of dynamic property … is deprecated` (درگاه اسنپ‌پی)
+
+```
+wp-content/plugins/snapppay-woocommerce-gateway/class-wc-gateway-snapppay.php:51  → $author
+…:65 $client_id   :66 $client_secret   :67 $client_username
+…:68 $client_password   :69 $base_url
+…:71 $success_message   :72 $failed_message   :73 $cancelled_message
+```
+
+**یعنی چه:** افزونه‌ی درگاه اسنپ‌پی ویژگی‌های (`property`) را بدون تعریف در کلاس مقداردهی می‌کند (`$this->client_id = ...`) بدون اینکه `public $client_id;` را در ابتدای کلاس اعلام کرده باشد. از **PHP 8.2** این کار «deprecated» شده و در **PHP 9 خطا (fatal)** می‌شود.
+
+**راه‌حل (به‌ترتیب):**
+1. اول **آپدیت افزونه**: در پیشخوان → افزونه‌ها → بررسی دوباره‌ی به‌روزرسانی‌ها (یا از سایت رسمی اسنپ‌پی نسخه‌ی جدید را بگیرید). اگر آپدیت این را حل کرد، تمام.
+2. اگر آپدیت نبود: فایل `class-wc-gateway-snapppay.php` را باز کنید و بالای خط ۵۱ (جایی که `class WC_Gateway_SnappPay extends WC_Payment_Gateway {` است) این تک‌خط را اضافه کنید:
+```php
+#[\AllowDynamicProperties]
+class WC_Gateway_SnappPay extends WC_Payment_Gateway {
+```
+> در PHP 7 این خط مثل کامنت نادیده گرفته می‌شود، پس بی‌خطر است؛ در PHP 8.2+ هشدار را کامل از بین می‌برد.
+3. راه استانداردتر (برای ارائه به توسعه‌دهنده): کنار بقیه‌ی ویژگی‌های کلاس این‌ها را اعلام کنید:
+```php
+public $author;
+public $client_id;
+public $client_secret;
+public $client_username;
+public $client_password;
+public $base_url;
+public $success_message;
+public $failed_message;
+public $cancelled_message;
+```
+
+### ۷.۲) `Trying to access array offset on false` — `functions.php:330`
+
+این **یک باگ واقعی** است، نه فقط هشدار: کد یک متغیر را «آرایه» فرض کرده (مثلاً `$response['data']['token']`)، ولی آن متغیر `false` بوده است. معمولاً یعنی **پاسخ API درست نبوده** (پاسخ خطای HTML/WAF به‌جای JSON) یا متادیتای سفارش پیدا نشده است.
+
+**چه کار کنید:**
+1. فایل `wp-content/plugins/snapppay-woocommerce-gateway/functions.php` را باز کنید و خط ۳۳۰ را ببینید: کدام متغیر ایندکس می‌شود؟
+2. در ۹۹٪ موارد این الگوست:
+```php
+$json = json_decode( wp_remote_retrieve_body( $response ), true );
+$token = $json['access_token'];   // ← اگر json_decode ناموفق باشد، اینجا خطا می‌دهد
+```
+راه‌حل چند خطی:
+```php
+$json = json_decode( wp_remote_retrieve_body( $response ), true );
+if ( ! is_array( $json ) ) {
+    // لاگ و بازگشت امن
+    return false; // یا wp_send_json_error(...)
+}
+```
+3. مهم‌تر: **تست پرداخت واقعی** با درگاه اسنپ‌پی (حالت تست/مبلغ کم). اگر این خطا در مسیر «بازگشت از درگاه» رخ بدهد، ممکن است پرداخت موفق تأیید نشود. این را با توسعه‌دهنده‌ی افزونه (یا پشتیبانی اسنپ‌پی) مطرح کنید و همین لاگ را برایشان بفرستید.
+4. تا رفع نهایی، در `wp-config.php` این‌ها را برای سایت زنده بگذارید تا خطاها به بازدیدکننده نمایش داده نشوند:
+```php
+define( 'WP_DEBUG', true );
+define( 'WP_DEBUG_LOG', true );      // خطاها در wp-content/debug.log
+define( 'WP_DEBUG_DISPLAY', false ); // نمایش به کاربر خاموش
+```
+
+### ۷.۳) `wp_add_inline_script was called incorrectly … Do not pass <script> tags` (قالب Woodmart)
+
+```
+woodmart_enqueue_base_scripts()  →  wp-content/themes/woodmart/inc/enqueue.php:227
+```
+
+**اول ببینیم چرا مهم است:** تابع `wp_add_inline_script()` خودش کد را داخل `<script>` می‌گذارد. اگر قالب هم کد را با `<script>...</script>` بفرستد، خروجی این می‌شود:
+
+```html
+<script id="woodmart-base-after"><script>var woodmartConfig = {...};</script></script>
+```
+
+مرورگر این را چنین تفسیر می‌کند: بلوک اسکریپت از `<script>` اول شروع می‌شود، و کد داخلش با کاراکتر `<` شروع می‌شود → **خطای Syntax در همان ابتدا** → **کل بلوک اجرا نمی‌شود**؛ بعد هم تگ `</script>` اضافه در HTML باقی می‌ماند (HTML نامعتبر). همچنین ابزارهای بهینه‌ساز (مثل JS Combine لایت‌اسپید) روی چنین ساختاری شکست می‌خورند.
+
+**راه‌حل‌ها:**
+1. **آپدیت قالب Woodmart** (و woodmart-core/woodmart-plus) به آخرین نسخه؛ این اشکال باید در نسخه‌های جدیدتر اصلاح شده باشد.
+2. اگر با آپدیت حل نشد، همین لاگ را با ذکر فایل و خط به **پشتیبانی Xtemos** بدهید.
+3. **پچ مستقیم (انجامیده تا آپدیت بعدی قالب):** در `inc/enqueue.php` نزدیک خط ۲۲۷، رشته‌ای که به `wp_add_inline_script` داده می‌شود را از `<script>…</script>` پاک کنید (فقط محتوای داخل را بگذارید).
+4. **یا با افزونه‌ی همراه (v1.2.0):** گزینه‌ی «اصلاح اسکریپت‌های inline ناسالم» (پیش‌فرض: فعال) خروجی را اصلاح می‌کند. توجه: هشدار خودِ وردپرس که هنگام صدا زدن تابع تولید می‌شود **باقی می‌ماند** (چون پیش از ما ثبت می‌شود) — این گزینه فقط HTML/JS خروجی را سالم می‌کند که مهم‌ترین بخش ماجراست.
+
+### ۷.۴) یک نکته‌ی محیطی
+
+این هشدارها فقط در محیطی که «نمایش خطا» فعال است دیده می‌شوند (Query Monitor یا `WP_DEBUG`). توصیه: بعد از پایان کار بهینه‌سازی، **Query Monitor را برای غیرمدیرها خاموش/غیرفعال کنید** و در سایت زنده `WP_DEBUG_DISPLAY` را `false` بگذارید تا خطاها به کاربر نشان داده نشوند و لاگ‌ها هر روز بزرگ‌تر نشوند.
+
+---
+
 ## پیوست: افزونه‌ی «دکتر سرعت هَنزبات»
 
 مسیر: `hanzobot-speed-doctor/` (برای نصب: زیپ `hanzobot-speed-doctor.zip` را از پیشخوان نصب کنید، یا پوشه را در `wp-content/plugins` بگذارید).
@@ -317,7 +406,9 @@ elementor-gf-local-robotoslab →  http://yenolife.com/wp-content/uploads/elemen
 | تجمیع کوئری‌های آپشن | یادگیری نام آپشن‌های تک‌کوئری + پرکردن همه با یک `IN (...)` + علامت‌زدن ناموجودها در `notoptions` |
 | نگهبان rewrite_rules | حذف نوشتن‌های تکراری + تعمیر ردیف با `INSERT ... ON DUPLICATE KEY UPDATE` + `autoload=off` + ثبت مقصر |
 | پروفایلر | شمارش حجم/تعداد نوشتن‌ها در `wp_postmeta` و `wp_options` (مثلاً کش المنتور) |
-| گزارش | autoload، ترنزینت‌ها، ایندکس postmeta، وضعیت آبجکت‌کش، ردیف‌های کش المنتور |
+| گزارش | autoload، ترنزینت‌ها، ایندکس postmeta، وضعیت آبجکت‌کش، ردیف‌های کش المنتور + آپشن‌های سنگین Woodmart/المنتور |
+| رفع محتوای ناامن (v1.1.0) | فایل‌های http دامنه‌ی خودی روی صفحه‌ی https → https |
+| اصلاح اسکریپت inline (v1.2.0) | حذف تگ `<script>` اضافه‌ای که قالب داخل اسکریپت inline گذاشته |
 | گزینه‌ی پیشرفته | جلوگیری از نوشتن `_elementor_element_cache` (پیش‌فرض خاموش) |
 
 **نکات مهم:**
