@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name:       Hanzobot: Speed Doctor
- * Description:       دکتر سرعت هَنزبات — کاهش کوئری‌های تکراری وردپرس: تجمیع کوئری‌های wp_options در یک کوئری، تعمیر و جلوگیری از بازنویسی مکرر rewrite_rules، پروفایلر نوشتن‌های متا/آپشن، و گزارش وضعیت کش و جداول.
- * Version:           1.0.0
+ * Description:       دکتر سرعت هَنزبات — کاهش کوئری‌های تکراری وردپرس: تجمیع کوئری‌های wp_options در یک کوئری، تعمیر و جلوگیری از بازنویسی مکرر rewrite_rules، رفع محتوای ناامن (http روی https)، ممیزی دارایی‌های CSS/JS، پروفایلر نوشتن‌های متا/آپشن و گزارش وضعیت کش و جداول.
+ * Version:           1.1.0
  * Author:            Hanzobot
  * License:           GPL-2.0-or-later
  * Requires at least: 5.8
@@ -83,6 +83,10 @@ final class Hanzobot_Speed_Doctor {
 		'option_bytes' => 0,
 		'option_count' => 0,
 		'bump'         => array(),
+		'assets'       => array(
+			'styles'  => array(),
+			'scripts' => array(),
+		),
 	);
 
 	/**
@@ -138,6 +142,8 @@ final class Hanzobot_Speed_Doctor {
 		'rewrite_guard'     => 1,
 		'block_elem_cache'  => 0,
 		'profile'           => 1,
+		'force_https'       => 1,
+		'assets_audit'      => 1,
 	);
 
 	/* ---------------------------------------------------------------------
@@ -178,6 +184,68 @@ final class Hanzobot_Speed_Doctor {
 			add_action( 'added_option', array( __CLASS__, 'count_option_added' ), 10, 2 );
 			add_action( 'updated_option', array( __CLASS__, 'count_option_updated' ), 10, 3 );
 		}
+
+		if ( self::opt( 'force_https' ) || self::opt( 'assets_audit' ) ) {
+			add_filter( 'style_loader_src', array( __CLASS__, 'filter_style_src' ), 20, 2 );
+			add_filter( 'script_loader_src', array( __CLASS__, 'filter_script_src' ), 20, 2 );
+		}
+	}
+
+	/**
+	 * ثبت استایل‌های صف‌شده + رفع محتوای ناامن (http روی صفحه‌ی https).
+	 *
+	 * @param string $src    آدرس فایل.
+	 * @param string $handle شناسه.
+	 * @return string
+	 */
+	public static function filter_style_src( $src, $handle = '' ) {
+		self::$rt['assets']['styles'][ (string) $handle ] = $src;
+		return self::maybe_https( $src );
+	}
+
+	/**
+	 * ثبت اسکریپت‌های صف‌شده + رفع محتوای ناامن.
+	 *
+	 * @param string $src    آدرس فایل.
+	 * @param string $handle شناسه.
+	 * @return string
+	 */
+	public static function filter_script_src( $src, $handle = '' ) {
+		self::$rt['assets']['scripts'][ (string) $handle ] = $src;
+		return self::maybe_https( $src );
+	}
+
+	/**
+	 * اگر صفحه https است و فایل از دامنه‌ی خود سایت با http خوانده می‌شود، آن را به https ارتقا می‌دهد.
+	 * فقط دامنه‌ی خودِ سایت؛ فایل‌های خارجی دست‌نخورده می‌مانند.
+	 *
+	 * @param string $src آدرس.
+	 * @return string
+	 */
+	private static function maybe_https( $src ) {
+		if ( ! self::opt( 'force_https' ) || ! is_string( $src ) || '' === $src ) {
+			return $src;
+		}
+
+		if ( 0 !== strpos( $src, 'http://' ) ) {
+			return $src;
+		}
+
+		$home = home_url();
+
+		if ( 0 !== strpos( $home, 'https://' ) ) {
+			return $src;
+		}
+
+		$host_src  = wp_parse_url( $src, PHP_URL_HOST );
+		$host_home = wp_parse_url( $home, PHP_URL_HOST );
+
+		if ( $host_src && $host_home && strtolower( $host_src ) === strtolower( $host_home ) ) {
+			self::bump( 'https_upgraded' );
+			return set_url_scheme( $src, 'https' );
+		}
+
+		return $src;
 	}
 
 	/**
@@ -205,6 +273,109 @@ final class Hanzobot_Speed_Doctor {
 		}
 
 		return isset( $options[ $key ] ) ? $options[ $key ] : $fallback;
+	}
+
+	/**
+	 * ذخیره‌ی آپشن با تعیین autoload (برای اینکه خود افزونه به alloptions اضافه نکند).
+	 *
+	 * @param string $name     نام.
+	 * @param mixed  $value    مقدار.
+	 * @param bool   $autoload آیا در alloptions بیاید.
+	 * @return void
+	 */
+	private static function put_option( $name, $value, $autoload = false ) {
+		if ( false === get_option( $name, false ) ) {
+			add_option( $name, $value, '', $autoload );
+			return;
+		}
+
+		update_option( $name, $value );
+	}
+
+	/**
+	 * آدرس یک دارایی محلی را به مسیر فایل تبدیل می‌کند (برای گرفتن حجم).
+	 *
+	 * @param string $src آدرس.
+	 * @return string مسیر فایل یا رشته‌ی خالی.
+	 */
+	private static function src_to_path( $src ) {
+		$clean = preg_replace( '/[?#].*$/', '', (string) $src );
+		$pairs = array( content_url() => WP_CONTENT_DIR );
+
+		if ( defined( 'WP_PLUGIN_DIR' ) ) {
+			$pairs[ plugins_url() ] = WP_PLUGIN_DIR;
+		}
+		if ( defined( 'WPMU_PLUGIN_DIR' ) && defined( 'WPMU_PLUGIN_URL' ) ) {
+			$pairs[ WPMU_PLUGIN_URL ] = WPMU_PLUGIN_DIR;
+		}
+
+		foreach ( $pairs as $url => $dir ) {
+			foreach ( array( 'https', 'http' ) as $scheme ) {
+				$candidate = set_url_scheme( $url, $scheme );
+
+				if ( 0 === strpos( $clean, $candidate ) ) {
+					return $dir . substr( $clean, strlen( $candidate ) );
+				}
+			}
+		}
+
+		return '';
+	}
+
+	/**
+	 * خلاصه‌ی دارایی‌های CSS/JS درخواست جاری: تعداد، حجم فایل‌های محلی، موارد ناامن و سنگین‌ترین‌ها.
+	 *
+	 * @return array
+	 */
+	private static function asset_summary() {
+		$summary = array(
+			'styles'    => count( self::$rt['assets']['styles'] ),
+			'scripts'   => count( self::$rt['assets']['scripts'] ),
+			'bytes'     => 0,
+			'insecure'  => array(),
+			'top'       => array(),
+		);
+
+		$rows  = array();
+		$total = 0;
+
+		foreach ( array( 'style' => self::$rt['assets']['styles'], 'script' => self::$rt['assets']['scripts'] ) as $type => $list ) {
+			foreach ( $list as $handle => $src ) {
+				if ( ! is_string( $src ) || '' === $src ) {
+					continue;
+				}
+
+				$insecure = ( 0 === strpos( $src, 'http://' ) );
+				$bytes    = 0;
+				$path     = self::src_to_path( $src );
+
+				if ( $path && is_readable( $path ) ) {
+					$bytes = (int) filesize( $path );
+				}
+
+				$total += $bytes;
+
+				if ( $insecure ) {
+					$summary['insecure'][] = $handle;
+				}
+
+				$rows[] = array(
+					'key'      => $handle,
+					'type'     => $type,
+					'bytes'    => $bytes,
+					'insecure' => $insecure,
+				);
+			}
+		}
+
+		$summary['bytes'] = $total;
+
+		usort( $rows, array( __CLASS__, 'cmp_bytes' ) );
+
+		$summary['top']         = array_slice( $rows, 0, 12 );
+		$summary['insecure']    = array_slice( array_values( array_unique( $summary['insecure'] ) ), 0, 15 );
+
+		return $summary;
 	}
 
 	/* ---------------------------------------------------------------------
@@ -600,7 +771,9 @@ final class Hanzobot_Speed_Doctor {
 	 * @return void
 	 */
 	public static function store_stats() {
-		if ( ! self::$rt['meta_count'] && ! self::$rt['option_count'] && ! self::$rt['primed_count'] ) {
+		$has_assets = ! empty( self::$rt['assets']['styles'] ) || ! empty( self::$rt['assets']['scripts'] );
+
+		if ( ! self::$rt['meta_count'] && ! self::$rt['option_count'] && ! self::$rt['primed_count'] && ! $has_assets ) {
 			return;
 		}
 
@@ -631,10 +804,12 @@ final class Hanzobot_Speed_Doctor {
 			'top_meta'      => self::top( self::$rt['meta_writes'], 12 ),
 			'top_options'   => self::top( self::$rt['option_writes'], 12 ),
 			'probe'         => count( (array) get_option( self::PROBE, array() ) ),
+			'assets'        => self::asset_summary(),
 			'cum'           => $cum,
 		);
 
-		update_option( self::STATS, $stats );
+		// این آپشن در هر درخواست (در shutdown) خوانده می‌شود، پس autoload آن روشن می‌مانَد تا کوئری اضافه نزند.
+		self::put_option( self::STATS, $stats, true );
 	}
 
 	/**
@@ -711,7 +886,7 @@ final class Hanzobot_Speed_Doctor {
 
 		$events = array_slice( $events, 0, self::MAX_EVENTS );
 
-		update_option( self::EVENTS, $events );
+		self::put_option( self::EVENTS, $events, false );
 	}
 
 	/**
@@ -796,6 +971,8 @@ final class Hanzobot_Speed_Doctor {
 				'rewrite_guard'    => isset( $_POST['rewrite_guard'] ) ? 1 : 0,
 				'block_elem_cache' => isset( $_POST['block_elem_cache'] ) ? 1 : 0,
 				'profile'          => isset( $_POST['profile'] ) ? 1 : 0,
+				'force_https'      => isset( $_POST['force_https'] ) ? 1 : 0,
+				'assets_audit'     => isset( $_POST['assets_audit'] ) ? 1 : 0,
 			);
 
 			update_option( self::OPT, $options );
@@ -902,9 +1079,39 @@ final class Hanzobot_Speed_Doctor {
 		$diag['opt_rows']   = (int) $wpdb->get_var( "SELECT COUNT(*) FROM `{$wpdb->options}`" ); // phpcs:ignore WordPress.DB
 		$diag['transients'] = (int) $wpdb->get_var( "SELECT COUNT(*) FROM `{$wpdb->options}` WHERE option_name LIKE '\_transient\_%' OR option_name LIKE '\_site\_transient\_%'" ); // phpcs:ignore WordPress.DB
 
+		// آپشن‌های سنگین قالب Woodmart: CSS سراسری تم در یک آپشن autoload ذخیره می‌شود.
+		$heavy = $wpdb->get_results( "SELECT option_name, LENGTH(option_value) AS s, autoload FROM `{$wpdb->options}` WHERE option_name IN ('xts-theme_settings_default-css-data','xts-woodmart-options','woodmart_options','xts-header_827224-css-data','elementor_google_fonts','elementor_global_css') ORDER BY s DESC" ); // phpcs:ignore WordPress.DB
+		$diag['heavy'] = array();
+
+		foreach ( (array) $heavy as $h ) {
+			$diag['heavy'][] = array(
+				'name'     => $h->option_name,
+				'size'     => (int) $h->s,
+				'autoload' => $h->autoload,
+			);
+		}
+
 		set_transient( self::DIAG, $diag, 5 * MINUTE_IN_SECONDS );
 
 		return $diag;
+	}
+
+	/**
+	 * راهنمای زیرنویس برای آپشن‌های سنگین قالب/صفحه‌ساز.
+	 *
+	 * @param string $name نام آپشن.
+	 * @return string
+	 */
+	private static function heavy_hint( $name ) {
+		if ( in_array( $name, array( 'xts-theme_settings_default-css-data', 'xts-header_827224-css-data', 'xts-woodmart-options' ), true ) ) {
+			return ' <span style="color:#b32d2e">← CSS سراسری قالب Woodmart (قابل انتقال به style.css قالب فرزند)</span>';
+		}
+
+		if ( 'elementor_google_fonts' === $name ) {
+			return ' <span style="color:#b32d2e">← محل احتمالی آدرس‌های http فونت محلی المنتور</span>';
+		}
+
+		return '';
 	}
 
 	/**
@@ -970,6 +1177,31 @@ final class Hanzobot_Speed_Doctor {
 				</tbody>
 			</table>
 
+			<?php if ( ! empty( $diag['autoload_t'] ) ) : ?>
+				<h3>سنگین‌ترین آپشن‌های autoload</h3>
+				<table class="widefat striped" style="max-width:900px">
+					<thead><tr><th>نام آپشن</th><th style="width:140px">حجم</th></tr></thead>
+					<tbody>
+					<?php foreach ( $diag['autoload_t'] as $row ) : ?>
+						<tr><td><code><?php echo esc_html( $row['name'] ); ?></code><?php echo self::heavy_hint( $row['name'] ); // phpcs:ignore WordPress.Security.EscapeOutput ?></td><td><?php echo esc_html( size_format( $row['size'] ) ); ?></td></tr>
+					<?php endforeach; ?>
+					</tbody>
+				</table>
+			<?php endif; ?>
+
+			<?php if ( ! empty( $diag['heavy'] ) ) : ?>
+				<h3>آپشن‌های سنگین قالب و صفحه‌ساز</h3>
+				<table class="widefat striped" style="max-width:900px">
+					<thead><tr><th>نام آپشن</th><th style="width:140px">حجم</th><th style="width:110px">autoload</th></tr></thead>
+					<tbody>
+					<?php foreach ( $diag['heavy'] as $row ) : ?>
+						<tr><td><code><?php echo esc_html( $row['name'] ); ?></code><?php echo self::heavy_hint( $row['name'] ); // phpcs:ignore WordPress.Security.EscapeOutput ?></td><td><?php echo esc_html( size_format( $row['size'] ) ); ?></td><td><code><?php echo esc_html( $row['autoload'] ); ?></code></td></tr>
+					<?php endforeach; ?>
+					</tbody>
+				</table>
+				<p class="description" style="max-width:900px">اگر <code>xts-theme_settings_default-css-data</code> چند صد کیلوبایت است: این «CSS سفارشی» قالب Woodmart است که با هر بازدید خوانده می‌شود. طبق توصیه‌ی خود Xtemos، آن را از «تنظیمات قالب → CSS سفارشی» بردارید و داخل <code>style.css</code> قالب فرزند بگذارید. همچنین در «تنظیمات قالب → عملکرد → CSS» گزینه‌های «Inline styles size limit» و «Convert large CSS files to inline styles» را بررسی کنید.</p>
+			<?php endif; ?>
+
 			<h2>۲) تنظیمات</h2>
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 				<?php wp_nonce_field( 'hbot_sd_action' ); ?>
@@ -990,6 +1222,16 @@ final class Hanzobot_Speed_Doctor {
 						<th scope="row">پروفایلر</th>
 						<td><label><input type="checkbox" name="profile" value="1" <?php checked( self::opt( 'profile' ) ); ?>> فعال</label>
 						<p class="description">شمارش حجم نوشتن‌ها در متا و آپشن‌ها (برای پیدا کردن پرمصرف‌ترین افزونه‌ها).</p></td>
+					</tr>
+					<tr>
+						<th scope="row">رفع محتوای ناامن (Mixed Content)</th>
+						<td><label><input type="checkbox" name="force_https" value="1" <?php checked( self::opt( 'force_https' ) ); ?>> فعال</label>
+						<p class="description">فایل‌های CSS/JS که از دامنه‌ی خود سایت با <code>http://</code> صدا زده می‌شوند و روی صفحه‌ی https توسط مرورگر بلاک می‌شوند، به <code>https://</code> ارتقا داده می‌شوند (یک تغییر تشخیصی، بدون دست‌زدن به فایل‌های خارجی).</p></td>
+					</tr>
+					<tr>
+						<th scope="row">ممیزی دارایی‌های CSS/JS</th>
+						<td><label><input type="checkbox" name="assets_audit" value="1" <?php checked( self::opt( 'assets_audit' ) ); ?>> فعال</label>
+						<p class="description">تعداد و حجم فایل‌های صف‌شده را در هر درخواست می‌شمارد و در بخش ۶ نشان می‌دهد (کمک می‌کند بفهمید کدام قالب/افزونه بیشترین CSS را می‌آورد).</p></td>
 					</tr>
 					<tr>
 						<th scope="row">جلوگیری از نوشتن کش المنتور در postmeta</th>
@@ -1112,7 +1354,42 @@ final class Hanzobot_Speed_Doctor {
 				</table>
 			<?php endif; ?>
 
-			<h2>۶) راهنمای سریع بعدِ نصب</h2>
+			<h2>۶) ممیزی دارایی‌های CSS/JS آخرین درخواست</h2>
+			<?php if ( empty( $stats['assets'] ) ) : ?>
+				<p>هنوز داده‌ای ثبت نشده. یک بازدید از صفحه‌ی اصلی و یک بازدید از صفحه‌ی محصول انجام دهید.</p>
+			<?php else : ?>
+				<?php $as = $stats['assets']; ?>
+				<table class="widefat striped" style="max-width:900px">
+					<tbody>
+						<tr><td style="width:280px">تعداد فایل CSS / JS</td><td><?php echo esc_html( number_format_i18n( isset( $as['styles'] ) ? $as['styles'] : 0 ) ); ?> / <?php echo esc_html( number_format_i18n( isset( $as['scripts'] ) ? $as['scripts'] : 0 ) ); ?></td></tr>
+						<tr><td>حجم فایل‌های محلی صف‌شده</td><td><?php echo esc_html( size_format( isset( $as['bytes'] ) ? $as['bytes'] : 0 ) ); ?> <small>(فایل‌های خارجی در این عدد نیستند)</small></td></tr>
+						<tr><td>فایل‌های درخواست‌شده با http</td><td>
+							<?php if ( ! empty( $as['insecure'] ) ) : ?>
+								<span style="color:#b32d2e"><?php echo esc_html( implode( ', ', $as['insecure'] ) ); ?></span>
+								<br><small>اگر گزینه‌ی «رفع محتوای ناامن» روشن است، این‌ها برای کاربر https سرو می‌شوند؛ این فهرست نشان می‌دهد کد/دیتابیس کجا هنوز http ذخیره کرده است.</small>
+							<?php else : ?>
+								<span style="color:#008a20">ندارد</span>
+							<?php endif; ?>
+						</td></tr>
+					</tbody>
+				</table>
+
+				<h3>سنگین‌ترین فایل‌های محلی</h3>
+				<table class="widefat striped" style="max-width:900px">
+					<thead><tr><th>شناسه (handle)</th><th style="width:80px">نوع</th><th style="width:130px">حجم فایل</th></tr></thead>
+					<tbody>
+					<?php foreach ( (array) ( isset( $as['top'] ) ? $as['top'] : array() ) as $row ) : ?>
+						<tr>
+							<td><code><?php echo esc_html( $row['key'] ); ?></code><?php echo $row['insecure'] ? ' <span style="color:#b32d2e">(http)</span>' : ''; // phpcs:ignore WordPress.Security.EscapeOutput ?></td>
+							<td><?php echo esc_html( 'style' === $row['type'] ? 'CSS' : 'JS' ); ?></td>
+							<td><?php echo esc_html( size_format( $row['bytes'] ) ); ?></td>
+						</tr>
+					<?php endforeach; ?>
+					</tbody>
+				</table>
+			<?php endif; ?>
+
+			<h2>۷) راهنمای سریع بعدِ نصب</h2>
 			<ol style="max-width:900px;line-height:2">
 				<li>کش صفحه (لایت‌اسپید) را پاک کنید و سایت را در پنجره‌ی ناشناس (مهمان) تست کنید.</li>
 				<li>اگر «آبجکت‌کش پایدار» ندارد: از هاستینگ Redis بخواهید و افزونه‌ی Redis Object Cache را نصب کنید. ایندکس‌ها و کوئری‌های تکراری هم با آن حل می‌شوند.</li>
